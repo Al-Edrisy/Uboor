@@ -1,0 +1,22 @@
+
+[91merror[0m[90m TS2688: [0mCannot find type definition file for 'jest'.
+  The file is in the program because:
+    Entry point of type library 'jest' specified in compilerOptions
+
+  [96mtsconfig.json[0m:[93m16[0m:[93m23[0m
+    [7m16[0m     "types": ["node", "jest"],
+    [7m  [0m [96m                      ~~~~~~[0m
+    File is entry point of type library specified here.
+
+[91merror[0m[90m TS2688: [0mCannot find type definition file for 'node'.
+  The file is in the program because:
+    Entry point of type library 'node' specified in compilerOptions
+
+  [96mtsconfig.json[0m:[93m16[0m:[93m15[0m
+    [7m16[0m     "types": ["node", "jest"],
+    [7m  [0m [96m              ~~~~~~[0m
+    File is entry point of type library specified here.
+
+
+Found 2 errors.
+

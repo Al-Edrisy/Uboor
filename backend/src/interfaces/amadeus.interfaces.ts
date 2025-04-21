@@ -249,3 +249,167 @@ export interface PricingResponse {
     };
   };
 }
+
+// ---------------------------
+
+export interface BookingResponse {
+  data: {
+      type: 'flight-order';
+      id: string;
+      queuingOfficeId: string;
+      associatedRecords: Array<{
+          reference: string;
+          creationDate: string;
+          originSystemCode: string;
+          flightOfferId: string;
+      }>;
+      flightOffers: Array<{
+          type: 'flight-offer';
+          id: string;
+          source: string;
+          nonHomogeneous: boolean;
+          lastTicketingDate: string;
+          itineraries: Array<{
+              segments: Array<{
+                  departure: {
+                      iataCode: string;
+                      at: string;
+                  };
+                  arrival: {
+                      iataCode: string;
+                      at: string;
+                  };
+                  carrierCode: string;
+                  number: string;
+                  aircraft: {
+                      code: string;
+                  };
+                  duration: string;
+                  id: string;
+                  numberOfStops: number;
+                  co2Emissions: Array<{
+                      weight: number;
+                      weightUnit: string;
+                      cabin: string;
+                  }>;
+              }>;
+          }>;
+          price: {
+              currency: string;
+              total: string;
+              base: string;
+              fees: Array<{
+                  amount: string;
+                  type: string;
+              }>;
+              grandTotal: string;
+              billingCurrency: string;
+          };
+          pricingOptions: {
+              fareType: string[];
+              includedCheckedBagsOnly: boolean;
+          };
+          validatingAirlineCodes: string[];
+          travelerPricings: Array<{
+              travelerId: string;
+              fareOption: string;
+              travelerType: 'ADULT' | 'CHILD' | 'INFANT';
+              price: {
+                  currency: string;
+                  total: string;
+                  base: string;
+                  taxes: Array<{
+                      amount: string;
+                      code: string;
+                  }>;
+                  refundableTaxes: string;
+              };
+              fareDetailsBySegment: Array<{
+                  segmentId: string;
+                  cabin: string;
+                  fareBasis: string;
+                  brandedFare: string;
+                  class: string;
+                  includedCheckedBags: {
+                      weight: number;
+                      weightUnit: string;
+                  };
+              }>;
+          }>;
+      }>;
+      travelers: Array<{
+          id: string;
+          dateOfBirth: string;
+          gender: 'MALE' | 'FEMALE';
+          name: {
+              firstName: string;
+              lastName: string;
+          };
+          documents?: Array<{
+              number: string;
+              issuanceDate: string;
+              expiryDate: string;
+              issuanceCountry: string;
+              issuanceLocation: string;
+              nationality: string;
+              birthPlace: string;
+              documentType: 'PASSPORT' | 'ID_CARD';
+              holder: boolean;
+          }>;
+          contact: {
+              purpose: string;
+              phones: Array<{
+                  deviceType: 'MOBILE' | 'LANDLINE';
+                  countryCallingCode: string;
+                  number: string;
+              }>;
+              emailAddress: string;
+          };
+      }>;
+      remarks: {
+          general: Array<{
+              subType: string;
+              text: string;
+          }>;
+      };
+      ticketingAgreement: {
+          option: 'DELAY_TO_CANCEL';
+          delay: string;
+      };
+      automatedProcess: Array<{
+          code: string;
+          queue: {
+              number: string;
+              category: string;
+          };
+          officeId: string;
+      }>;
+      contacts: Array<{
+          addresseeName: {
+              firstName: string;
+          };
+          address: {
+              lines: string[];
+              postalCode: string;
+              countryCode: string;
+              cityName: string;
+          };
+          purpose: string;
+          phones: Array<{
+              deviceType: 'MOBILE' | 'LANDLINE';
+              countryCallingCode: string;
+              number: string;
+          }>;
+          companyName: string;
+          emailAddress: string;
+      }>;
+  };
+  dictionaries: {
+      locations: {
+          [key: string]: {
+              cityCode: string;
+              countryCode: string;
+          };
+      };
+  };
+}

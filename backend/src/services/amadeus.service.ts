@@ -86,26 +86,20 @@ export class AmadeusService {
   }
 
   async createFlightOrder(orderData: any): Promise<FlightOrderResponse> {
+    console.log("access token", this.accessToken);
     await this.authenticate();
 
     try {
-      const response = await this.client.post('/v1/booking/flight-orders', {
-        data: {
-          type: 'flight-order',
-          ...orderData
-        }
-      }, {
+      const response = await this.client.post<FlightOrderResponse>('/v1/booking/flight-orders', orderData, {
         headers: {
           Authorization: `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json'
         }
       });
-
+      console.log(response.data)
       return response.data;
-    } catch (error) {
-      // Use type assertion to specify that error is of type AxiosError
-      const axiosError = error as AxiosError;
-      logger.error(`Flight order creation failed: ${JSON.stringify(axiosError.response?.data || axiosError)}`); // Log the error response
+    } catch (error: any) { // Explicitly typing error as any
+      logger.error(`Flight order creation failed: ${error.response?.data || error.message}`); // Log full error response
       throw new Error('Failed to create flight order');
     }
   }

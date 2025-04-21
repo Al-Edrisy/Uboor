@@ -1,6 +1,6 @@
 // app/_layout.tsx
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { SplashScreen, Stack, useRouter } from 'expo-router';
 import { View } from 'react-native';
@@ -10,6 +10,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import AnimatedSplashScreen from './AnimatedSplashScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { FlightBookingProvider } from './context/FlightBookingContext';
+import { ThemeProvider } from './context/ThemeContext';
 
 // Keep the splash screen visible until we're ready to render
 SplashScreen.preventAutoHideAsync();
@@ -33,11 +34,13 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <FlightBookingProvider>
-        <AppInitializer />
-      </FlightBookingProvider>
-    </AuthProvider>
+    <ThemeProvider> {/* Wrap everything with our custom ThemeProvider */}
+      <AuthProvider>
+        <FlightBookingProvider>
+          <AppInitializer />
+        </FlightBookingProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
@@ -76,15 +79,40 @@ function RootLayoutNav() {
     return (
       <View style={{
         flex: 1,
-        backgroundColor: colorScheme === 'dark' ? '#121212' : '#fff',
+        backgroundColor: colorScheme === 'dark' ? '#16161a' : '#fffffe', // Updated to use our theme colors
         justifyContent: 'center',
         alignItems: 'center'
       }} />
     );
   }
 
+  // Create custom navigation themes based on our color scheme
+  const CustomDarkTheme = {
+    ...DarkTheme,
+    colors: {
+      ...DarkTheme.colors,
+      background: '#16161a', // Our dark background
+      card: '#242629', // Our dark surface
+      text: '#fffffe', // Our dark text
+      border: '#010101', // Our dark border
+      primary: '#7f5af0', // Our dark highlight/button color
+    },
+  };
+
+  const CustomLightTheme = {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      background: '#fffffe', // Our light background
+      card: '#f0f0f0', // Our light surface
+      text: '#2b2c34', // Our light text
+      border: '#d1d1e9', // Our light border
+      primary: '#6246ea', // Our light highlight/button color
+    },
+  };
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <NavigationThemeProvider value={colorScheme === 'dark' ? CustomDarkTheme : CustomLightTheme}>
       <Stack
         screenOptions={{
           headerShown: false,
@@ -99,6 +127,6 @@ function RootLayoutNav() {
           }}
         />
       </Stack>
-    </ThemeProvider>
+    </NavigationThemeProvider>
   );
 }

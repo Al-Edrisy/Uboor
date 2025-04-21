@@ -1,24 +1,30 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  Modal, 
-  StyleSheet, 
-  ActivityIndicator, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Modal,
+  StyleSheet,
+  ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
-  SafeAreaView
+  SafeAreaView,
+  Alert,
+  Pressable,
+  ScrollView
 } from 'react-native';
-import { FontAwesome5 } from '@expo/vector-icons';
+import { FontAwesome5, MaterialIcons, Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import FlightResultsModal from './../modals/FlightBooking/FlightResultsModal'; 
-import airportData from './../../python/airports.json'; 
+import airportData from './../../python/airports.json';
+import { useTheme } from './../context/ThemeContext';
+import { useThemeColor } from '@/components/Themed';
+import { useNavigation } from '@react-navigation/native';
+import { useFlightBooking } from '../context/FlightBookingContext';
+import currencyData from './../../python/currencies.json';
+import FlightResultsModal from './../modals/FlightBooking/FlightResultsModal';
 
-// Types
 type Airport = {
   iata: string;
   city: string;
@@ -38,6 +44,7 @@ type SearchParams = {
   flights: Flight[];
   travelers: number;
   classType: 'Economy' | 'Business' | 'First Class';
+  currency: string;
 };
 
 type ModalState = {
@@ -46,86 +53,36 @@ type ModalState = {
   flightIndex?: number;
 };
 
-// Constants
 const TRIP_TYPES = ['roundtrip', 'oneway', 'multicity'] as const;
 const CLASS_TYPES = ['Economy', 'Business', 'First Class'] as const;
 const MAX_FLIGHTS = 5;
 const MAX_TRAVELERS = 10;
 const MIN_TRAVELERS = 1;
-const API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:2000' : 'http://localhost:2000';
-
-// Theme
-const theme = {
-  colors: {
-    primary: '#6246ea',
-    secondary: '#e0e0e0',
-    danger: '#ff4444',
-    text: '#2d3436',
-    background: '#ffffff',
-    border: '#cccccc',
-    success: '#4CAF50',
-    warning: '#FFC107',
-  },
-  spacing: {
-    small: 8,
-    medium: 16,
-    large: 24,
-  },
-  borderRadius: {
-    small: 5,
-    medium: 8,
-    large: 10,
-  },
-  fontSize: {
-    small: 14,
-    medium: 16,
-    large: 18,
-    xlarge: 24,
-  }
-};
-
-// Helper functions
-const parseAirportData = (data: { airportData: string[] }): Airport[] => {
-  return data.airportData.map(entry => {
-    const [iata, city, country, airportName] = entry.split('-');
-    return { iata, city, country, airportName };
-  });
-};
-
-const airports = parseAirportData(airportData);
-
-const searchAirports = (query: string): Airport[] => {
-  if (!query) return [];
-  const lowerCaseQuery = query.toLowerCase();
-  return airports.filter(airport => 
-    airport.city.toLowerCase().includes(lowerCaseQuery) || 
-    airport.iata.toLowerCase().includes(lowerCaseQuery) ||
-    airport.airportName.toLowerCase().includes(lowerCaseQuery)
-  ).slice(0, 20);
-};
-
-const formatDate = (dateString: string): string => {
-  if (!dateString) return 'Select date';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'short', 
-    day: 'numeric' 
-  });
-};
+const API_BASE_URL = 'http://localhost:2000';
 
 const FlightSearch: React.FC = () => {
-  // State
+  const navigation = useNavigation();
+  const { theme } = useTheme();
+  const backgroundColor = useThemeColor({}, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const surfaceColor = useThemeColor({}, 'surface');
+  const highlightColor = useThemeColor({}, 'highlight');
+  const borderColor = useThemeColor({}, 'border');
+  const secondaryColor = useThemeColor({}, 'secondary');
+  const dangerColor = useThemeColor({}, 'warning');
+  const placeholderColor = useThemeColor({}, 'secondary');
+
   const [searchParams, setSearchParams] = useState<SearchParams>({
     tripType: 'roundtrip',
     flights: [{ id: Date.now(), flyingFrom: '', flyingTo: '', departureDate: '' }],
     travelers: 1,
     classType: 'Economy',
+    currency: 'USD'
   });
-  
-  const [modalState, setModalState] = useState<ModalState>({ 
-    type: '', 
-    visible: false 
+
+  const [modalState, setModalState] = useState<ModalState>({
+    type: '',
+    visible: false
   });
   const [loading, setLoading] = useState(false);
   const [resultsVisible, setResultsVisible] = useState(false);
@@ -133,14 +90,51 @@ const FlightSearch: React.FC = () => {
   const [airportSearchQuery, setAirportSearchQuery] = useState('');
   const [filteredAirports, setFilteredAirports] = useState<Airport[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [availableCurrencies, setAvailableCurrencies] = useState<string[]>(['USD']);
 
-  // Memoized values
+
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [selectedFlight, setSelectedFlight] = useState<FlightOffer | null>(null);
+
+
+  // Add this handler function
+const handleBookFlight = (offer: FlightOffer) => {
+  setSelectedFlight(offer);
+  setShowResultsModal(false);
+  setShowBookingModal(true);
+};
+  // Load currencies from JSON file
+  useEffect(() => {
+    try {
+      if (currencyData?.currencies) {
+        setAvailableCurrencies(currencyData.currencies);
+        if (!searchParams.currency) {
+          setSearchParams(prev => ({
+            ...prev,
+            currency: currencyData.currencies[0] || 'USD'
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load currencies:', error);
+    }
+  }, []);
+
+  const parseAirportData = (data: { airportData: string[] }): Airport[] => {
+    return data.airportData.map(entry => {
+      const [iata, city, country, airportName] = entry.split('-');
+      return { iata, city, country, airportName };
+    });
+  };
+
+  const airports = parseAirportData(airportData);
+
   const isRoundTrip = useMemo(() => searchParams.tripType === 'roundtrip', [searchParams.tripType]);
   const isMultiCity = useMemo(() => searchParams.tripType === 'multicity', [searchParams.tripType]);
   const canAddFlight = isMultiCity && searchParams.flights.length < MAX_FLIGHTS;
   const canRemoveFlight = isMultiCity && searchParams.flights.length > 1;
 
-  // Handlers
   const openModal = useCallback((type: string, flightIndex?: number) => {
     setModalState({ type, visible: true, flightIndex });
     if (type.includes('date') && flightIndex !== undefined) {
@@ -159,7 +153,7 @@ const FlightSearch: React.FC = () => {
     if (flightIndex !== undefined) {
       setSearchParams(prev => ({
         ...prev,
-        flights: prev.flights.map((flight, idx) => 
+        flights: prev.flights.map((flight, idx) =>
           idx === flightIndex ? { ...flight, [key]: value } : flight
         )
       }));
@@ -168,6 +162,22 @@ const FlightSearch: React.FC = () => {
     }
     closeModal();
   }, [closeModal]);
+
+  const searchAirports = useCallback((query: string): Airport[] => {
+    if (!query) return [];
+    const lowerCaseQuery = query.toLowerCase();
+    return airports.filter(airport =>
+      airport.city.toLowerCase().includes(lowerCaseQuery) ||
+      airport.iata.toLowerCase().includes(lowerCaseQuery) ||
+      airport.airportName.toLowerCase().includes(lowerCaseQuery)
+    ).slice(0, 20);
+  }, []);
+
+  const getAirportDisplayName = useCallback((iata: string) => {
+    if (!iata) return 'Select';
+    const airport = airports.find(a => a.iata === iata);
+    return airport ? `${iata} (${airport.city})` : iata;
+  }, []);
 
   const validateDate = useCallback((date: string) => {
     const selectedDate = new Date(date);
@@ -181,29 +191,29 @@ const FlightSearch: React.FC = () => {
       Alert.alert('Validation Error', 'Please add at least 2 flights for multi-city trips');
       return false;
     }
-    
+
     for (const flight of searchParams.flights) {
       if (!flight.flyingFrom || !flight.flyingTo || !flight.departureDate) {
         Alert.alert('Validation Error', 'Please fill in all flight details.');
         return false;
       }
-      
+
       if (flight.flyingFrom === flight.flyingTo) {
         Alert.alert('Validation Error', 'Departure and arrival airports cannot be the same.');
         return false;
       }
-      
+
       if (!validateDate(flight.departureDate)) {
         Alert.alert('Invalid Date', 'Please select a valid departure date.');
         return false;
       }
     }
-    
+
     if (isRoundTrip && !searchParams.flights[1]?.departureDate) {
       Alert.alert('Validation Error', 'Please select a return date.');
       return false;
     }
-    
+
     return true;
   }, [searchParams, isMultiCity, isRoundTrip, validateDate]);
 
@@ -213,7 +223,7 @@ const FlightSearch: React.FC = () => {
     setLoading(true);
     try {
       const requestData = {
-        currencyCode: "USD",
+        currencyCode: searchParams.currency,
         originDestinations: searchParams.flights.map((flight, index) => ({
           id: (index + 1).toString(),
           originLocationCode: flight.flyingFrom,
@@ -230,7 +240,7 @@ const FlightSearch: React.FC = () => {
         })),
         sources: ["GDS"],
         searchCriteria: {
-          maxFlightOffers: 20,
+          maxFlightOffers: 30,
           flightFilters: {
             cabinRestrictions: [{
               cabin: searchParams.classType.toUpperCase().replace(' ', '_'),
@@ -242,11 +252,11 @@ const FlightSearch: React.FC = () => {
       };
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       const response = await fetch(`${API_BASE_URL}/api/flights/search`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
@@ -267,7 +277,7 @@ const FlightSearch: React.FC = () => {
     } catch (error) {
       console.error('Search error:', error);
       let errorMessage = 'Failed to search flights. Please try again later.';
-      
+
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
           errorMessage = 'Request timed out. Please check your connection.';
@@ -275,7 +285,7 @@ const FlightSearch: React.FC = () => {
           errorMessage = error.message;
         }
       }
-      
+
       Alert.alert('Search Failed', errorMessage);
     } finally {
       setLoading(false);
@@ -287,14 +297,14 @@ const FlightSearch: React.FC = () => {
       Alert.alert('Limit Reached', `You can only add up to ${MAX_FLIGHTS} flights for multi-city trips.`);
       return;
     }
-    
+
     setSearchParams(prev => ({
       ...prev,
-      flights: [...prev.flights, { 
+      flights: [...prev.flights, {
         id: Date.now(),
-        flyingFrom: '', 
-        flyingTo: '', 
-        departureDate: '' 
+        flyingFrom: '',
+        flyingTo: '',
+        departureDate: ''
       }]
     }));
   }, [canAddFlight]);
@@ -310,15 +320,18 @@ const FlightSearch: React.FC = () => {
   const handleAirportSearch = useCallback((query: string) => {
     setAirportSearchQuery(query);
     setFilteredAirports(searchAirports(query));
-  }, []);
+  }, [searchAirports]);
 
-  const getAirportDisplayName = useCallback((iata: string) => {
-    if (!iata) return 'Select';
-    const airport = airports.find(a => a.iata === iata);
-    return airport ? `${iata} (${airport.city})` : iata;
-  }, []);
+  const formatDateDisplay = (dateString: string): string => {
+    if (!dateString) return 'Select date';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
 
-  // Effects
   useEffect(() => {
     if (isRoundTrip && searchParams.flights.length < 2) {
       setSearchParams(prev => ({
@@ -333,18 +346,17 @@ const FlightSearch: React.FC = () => {
     }
   }, [isRoundTrip, isMultiCity]);
 
-  // Render functions
   const renderTripTypeButtons = () => (
     <View style={styles.tripTypeContainer}>
       {TRIP_TYPES.map(type => (
-        <TouchableOpacity 
-          key={type} 
+        <Pressable
+          key={type}
           onPress={() => handleInputChange('tripType', type)}
-          style={[
-            styles.tripTypeButton, 
-            searchParams.tripType === type && styles.activeButton
+          style={({ pressed }) => [
+            styles.tripTypeButton,
+            searchParams.tripType === type && styles.activeButton,
+            pressed && styles.pressedButton
           ]}
-          accessibilityLabel={`Select ${type} trip`}
         >
           <Text style={[
             styles.buttonText,
@@ -352,8 +364,65 @@ const FlightSearch: React.FC = () => {
           ]}>
             {type.charAt(0).toUpperCase() + type.slice(1)}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       ))}
+    </View>
+  );
+
+  const renderOptionsRow = () => (
+    <View style={styles.optionsRow}>
+      {/* Class Type */}
+      <Pressable
+        onPress={() => openModal('class')}
+        style={({ pressed }) => [
+          styles.optionButton,
+          pressed && styles.pressedItem,
+          { flex: 3 }
+        ]}
+      >
+        <View style={styles.optionContent}>
+          <FontAwesome5 name="chair" size={16} color={highlightColor} />
+          <Text style={styles.optionText} numberOfLines={1}>
+            {searchParams.classType}
+          </Text>
+          <MaterialIcons name="keyboard-arrow-down" size={20} color={secondaryColor} />
+        </View>
+      </Pressable>
+
+      {/* Travelers */}
+      <Pressable
+        onPress={() => openModal('travelers')}
+        style={({ pressed }) => [
+          styles.optionButton,
+          pressed && styles.pressedItem,
+          { flex: 2 }
+        ]}
+      >
+        <View style={styles.optionContent}>
+          <FontAwesome5 name="users" size={16} color={highlightColor} />
+          <Text style={styles.optionText}>
+            {searchParams.travelers}
+          </Text>
+          <MaterialIcons name="keyboard-arrow-down" size={20} color={secondaryColor} />
+        </View>
+      </Pressable>
+
+      {/* Currency */}
+      <Pressable
+        onPress={() => openModal('currency')}
+        style={({ pressed }) => [
+          styles.optionButton,
+          pressed && styles.pressedItem,
+          { flex: 1 }
+        ]}
+      >
+        <View style={styles.optionContent}>
+          <Text style={styles.optionText}>
+            {searchParams.currency}
+          </Text>
+          <MaterialIcons name="keyboard-arrow-down" size={20} color={secondaryColor} />
+        </View>
+      </Pressable>
     </View>
   );
 
@@ -364,53 +433,57 @@ const FlightSearch: React.FC = () => {
           {isMultiCity ? `Flight ${index + 1}` : index === 0 ? 'Outbound' : 'Return'}
         </Text>
         {(isMultiCity && canRemoveFlight) && (
-          <TouchableOpacity 
-            style={styles.removeFlightButton} 
+          <TouchableOpacity
+            style={styles.removeFlightButton}
             onPress={() => removeFlight(flight.id)}
             disabled={!canRemoveFlight}
-            accessibilityLabel="Remove flight"
           >
-            <FontAwesome5 
-              name="times" 
-              size={16} 
-              color={canRemoveFlight ? 'white' : theme.colors.secondary} 
-            />
+            <Ionicons name="close" size={18} color="white" />
           </TouchableOpacity>
         )}
       </View>
-      
-      <TouchableOpacity 
-        onPress={() => openModal('flyingFrom', index)} 
-        style={styles.detailItem}
-        accessibilityLabel={`Select departure airport for flight ${index + 1}`}
+
+      <Pressable
+        onPress={() => openModal('flyingFrom', index)}
+        style={({ pressed }) => [
+          styles.detailItem,
+          pressed && styles.pressedItem
+        ]}
       >
-        <FontAwesome5 name="plane-departure" size={16} color={theme.colors.primary} />
+        <FontAwesome5 name="plane-departure" size={16} color={highlightColor} />
         <Text style={styles.detailText}>
           From: {getAirportDisplayName(flight.flyingFrom)}
         </Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
-        onPress={() => openModal('flyingTo', index)} 
-        style={styles.detailItem}
-        accessibilityLabel={`Select arrival airport for flight ${index + 1}`}
+        <MaterialIcons name="keyboard-arrow-right" size={20} color={secondaryColor} />
+      </Pressable>
+
+      <Pressable
+        onPress={() => openModal('flyingTo', index)}
+        style={({ pressed }) => [
+          styles.detailItem,
+          pressed && styles.pressedItem
+        ]}
       >
-        <FontAwesome5 name="plane-arrival" size={16} color={theme.colors.primary} />
+        <FontAwesome5 name="plane-arrival" size={16} color={highlightColor} />
         <Text style={styles.detailText}>
           To: {getAirportDisplayName(flight.flyingTo)}
         </Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
-        onPress={() => openModal('departureDate', index)} 
-        style={styles.detailItem}
-        accessibilityLabel={`Select departure date for flight ${index + 1}`}
+        <MaterialIcons name="keyboard-arrow-right" size={20} color={secondaryColor} />
+      </Pressable>
+
+      <Pressable
+        onPress={() => openModal('departureDate', index)}
+        style={({ pressed }) => [
+          styles.detailItem,
+          pressed && styles.pressedItem
+        ]}
       >
-        <FontAwesome5 name="calendar-alt" size={16} color={theme.colors.primary} />
+        <FontAwesome5 name="calendar-alt" size={16} color={highlightColor} />
         <Text style={styles.detailText}>
-          Departure: {formatDate(flight.departureDate)}
+          Departure: {formatDateDisplay(flight.departureDate)}
         </Text>
-      </TouchableOpacity>
+        <MaterialIcons name="keyboard-arrow-right" size={20} color={secondaryColor} />
+      </Pressable>
     </View>
   );
 
@@ -423,43 +496,54 @@ const FlightSearch: React.FC = () => {
             <Text style={styles.modalTitle}>
               {modalState.type === 'flyingFrom' ? 'Departure Airport' : 'Arrival Airport'}
             </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Search by city, airport code or name"
-              value={airportSearchQuery}
-              onChangeText={handleAirportSearch}
-              autoFocus
-              clearButtonMode="while-editing"
-              returnKeyType="search"
-            />
+            <View style={styles.searchContainer}>
+              <Ionicons name="search" size={20} color={secondaryColor} style={styles.searchIcon} />
+              <TextInput
+                style={[styles.searchInput, { color: textColor }]}
+                placeholder="Search by city, airport code or name"
+                placeholderTextColor={placeholderColor}
+                value={airportSearchQuery}
+                onChangeText={handleAirportSearch}
+                autoFocus
+              />
+            </View>
             {filteredAirports.length === 0 && airportSearchQuery ? (
-              <Text style={styles.noResultsText}>No airports found</Text>
+              <View style={styles.noResultsContainer}>
+                <Ionicons name="alert-circle-outline" size={40} color={secondaryColor} />
+                <Text style={styles.noResultsText}>No airports found</Text>
+              </View>
             ) : (
               <FlatList
                 data={filteredAirports}
                 keyExtractor={item => item.iata}
                 renderItem={({ item }) => (
-                  <TouchableOpacity 
-                    style={styles.airportItem}
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.airportItem,
+                      pressed && styles.pressedItem
+                    ]}
                     onPress={() => handleInputChange(
-                      modalState.type, 
-                      item.iata, 
+                      modalState.type,
+                      item.iata,
                       modalState.flightIndex
                     )}
                   >
-                    <Text style={styles.airportCode}>{item.iata}</Text>
-                    <View style={styles.airportInfo}>
+                    <View style={styles.airportIcon}>
+                      <FontAwesome5 name="plane" size={16} color={highlightColor} />
+                    </View>
+                    <View style={styles.airportTextContainer}>
                       <Text style={styles.airportCity}>{item.city}, {item.country}</Text>
                       <Text style={styles.airportName}>{item.airportName}</Text>
                     </View>
-                  </TouchableOpacity>
+                    <Text style={styles.airportCode}>{item.iata}</Text>
+                  </Pressable>
                 )}
                 keyboardShouldPersistTaps="handled"
               />
             )}
           </View>
         );
-      
+
       case 'departureDate':
         return (
           <View style={styles.modalContentContainer}>
@@ -467,6 +551,8 @@ const FlightSearch: React.FC = () => {
               Select {modalState.flightIndex === 1 && isRoundTrip ? 'return' : 'departure'} date
             </Text>
             <DateTimePicker
+              style={styles.input}
+              testID="dateTimePicker"
               value={selectedDate}
               mode="date"
               display={Platform.OS === 'ios' ? 'spinner' : 'default'}
@@ -475,91 +561,523 @@ const FlightSearch: React.FC = () => {
                 if (date) {
                   setSelectedDate(date);
                   handleInputChange(
-                    'departureDate', 
-                    date.toISOString().split('T')[0], 
+                    'departureDate',
+                    date.toISOString().split('T')[0],
                     modalState.flightIndex
                   );
                 }
               }}
             />
+            {Platform.OS === 'android' && (
+              <Pressable
+                style={styles.confirmButton}
+                onPress={closeModal}
+              >
+                <Text style={styles.confirmButtonText}>Confirm Date</Text>
+              </Pressable>
+            )}
           </View>
         );
-      
+
       case 'travelers':
         return (
           <View style={styles.modalContentContainer}>
             <Text style={styles.modalTitle}>Number of Travelers</Text>
             <View style={styles.travelerInputContainer}>
-              <TouchableOpacity
+              <Pressable
                 onPress={() => handleInputChange('travelers', Math.max(MIN_TRAVELERS, searchParams.travelers - 1))}
                 disabled={searchParams.travelers <= MIN_TRAVELERS}
-                style={[
+                style={({ pressed }) => [
                   styles.travelerButton,
-                  searchParams.travelers <= MIN_TRAVELERS && styles.disabledButton
+                  searchParams.travelers <= MIN_TRAVELERS && styles.disabledButton,
+                  pressed && styles.pressedButton
                 ]}
-                accessibilityLabel="Decrease traveler count"
               >
                 <Text style={styles.travelerButtonText}>-</Text>
-              </TouchableOpacity>
-              
+              </Pressable>
+
               <Text style={styles.travelerCount}>{searchParams.travelers}</Text>
-              
-              <TouchableOpacity
+
+              <Pressable
                 onPress={() => handleInputChange('travelers', searchParams.travelers + 1)}
                 disabled={searchParams.travelers >= MAX_TRAVELERS}
-                style={[
+                style={({ pressed }) => [
                   styles.travelerButton,
-                  searchParams.travelers >= MAX_TRAVELERS && styles.disabledButton
+                  searchParams.travelers >= MAX_TRAVELERS && styles.disabledButton,
+                  pressed && styles.pressedButton
                 ]}
-                accessibilityLabel="Increase traveler count"
               >
                 <Text style={styles.travelerButtonText}>+</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
-            <Text style={styles.travelerNote}>
-              {searchParams.travelers >= MAX_TRAVELERS ? 
-                `Maximum ${MAX_TRAVELERS} travelers allowed` : 
-                ''}
-            </Text>
           </View>
         );
-      
+
       case 'class':
         return (
           <View style={styles.modalContentContainer}>
             <Text style={styles.modalTitle}>Preferred Class</Text>
             <View style={styles.classOptionsContainer}>
               {CLASS_TYPES.map(option => (
-                <TouchableOpacity 
+                <Pressable
                   key={option}
-                  style={[
+                  style={({ pressed }) => [
                     styles.classOption,
-                    searchParams.classType === option && styles.selectedClassOption
+                    searchParams.classType === option && styles.selectedClassOption,
+                    pressed && styles.pressedButton
                   ]}
                   onPress={() => handleInputChange('classType', option)}
-                  accessibilityLabel={`Select ${option} class`}
                 >
-                  <FontAwesome5 
-                    name={option === 'First Class' ? 'crown' : option === 'Business' ? 'briefcase' : 'user'} 
-                    size={16} 
-                    color={searchParams.classType === option ? 'white' : theme.colors.primary} 
-                  />
+                  <View style={styles.classIconContainer}>
+                    <FontAwesome5
+                      name={option === 'First Class' ? 'crown' : option === 'Business' ? 'briefcase' : 'user'}
+                      size={16}
+                      color={searchParams.classType === option ? 'white' : highlightColor}
+                    />
+                  </View>
                   <Text style={[
                     styles.classOptionText,
                     searchParams.classType === option && styles.selectedClassOptionText
                   ]}>
                     {option}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               ))}
             </View>
           </View>
         );
-      
+
+      case 'currency':
+        return (
+          <View style={styles.modalContentContainer}>
+            <Text style={styles.modalTitle}>Select Currency</Text>
+            <FlatList
+              data={availableCurrencies}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.currencyItem,
+                    searchParams.currency === item && styles.selectedCurrencyItem,
+                    pressed && styles.pressedItem
+                  ]}
+                  onPress={() => handleInputChange('currency', item)}
+                >
+                  <Text style={[
+                    styles.currencyText,
+                    searchParams.currency === item && styles.selectedCurrencyText
+                  ]}>
+                    {item}
+                  </Text>
+                  {searchParams.currency === item && (
+                    <Ionicons name="checkmark" size={20} color={highlightColor} />
+                  )}
+                </Pressable>
+              )}
+            />
+          </View>
+        );
+
       default:
         return null;
     }
   };
+
+  const styles = StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor,
+    },
+    container: {
+      flex: 1,
+      backgroundColor,
+    },
+    scrollContainer: {
+      flexGrow: 1,
+    },
+    contentContainer: {
+      padding: 16,
+      paddingBottom: 24,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: textColor,
+    },
+    placeholder: {
+      width: 24,
+    },
+    tripTypeContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginVertical: 12,
+      backgroundColor: surfaceColor,
+      borderRadius: 10,
+      padding: 4,
+    },
+    tripTypeButton: {
+      padding: 12,
+      borderRadius: 8,
+      flex: 1,
+      alignItems: 'center',
+    },
+    activeButton: {
+      backgroundColor: highlightColor,
+    },
+    pressedButton: {
+      opacity: 0.8,
+    },
+    buttonText: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: textColor,
+    },
+    activeButtonText: {
+      color: 'white',
+    },
+    detailsContainer: {
+      marginBottom: 24,
+    },
+    optionsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 16,
+      gap: 8,
+    },
+    optionButton: {
+      padding: 5,
+      borderWidth: 1,
+      borderColor: borderColor,
+      borderRadius: 8,
+      backgroundColor: surfaceColor,
+    },
+    optionContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderRadius: 8,
+      borderBlockColor: borderColor,
+    },
+    optionText: {
+      marginHorizontal: 5,
+      fontSize: 14,
+      color: textColor,
+      fontWeight: '500',
+    },
+    flightSegment: {
+      marginBottom: 16,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: borderColor,
+      borderRadius: 12,
+      backgroundColor: surfaceColor,
+    },
+    flightSegmentHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    flightTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: textColor,
+    },
+    detailItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      borderWidth: 1,
+      borderColor: borderColor,
+      borderRadius: 8,
+      marginVertical: 8,
+      backgroundColor: surfaceColor,
+      justifyContent: 'space-between',
+    },
+    pressedItem: {
+      backgroundColor: `${highlightColor}20`,
+    },
+    detailText: {
+      marginLeft: 8,
+      fontSize: 16,
+      color: textColor,
+      flex: 1,
+    },
+    addFlightButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 8,
+      padding: 12,
+      borderRadius: 8,
+      backgroundColor: surfaceColor,
+      borderWidth: 1,
+      borderColor: highlightColor,
+    },
+    disabledAddButton: {
+      borderColor: secondaryColor,
+    },
+    addFlightText: {
+      marginLeft: 8,
+      fontSize: 16,
+      color: highlightColor,
+    },
+    disabledText: {
+      color: secondaryColor,
+    },
+    searchButton: {
+      backgroundColor: highlightColor,
+      padding: 16,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    searchButtonText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: 'bold',
+      marginLeft: 8,
+    },
+    modalContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    modalScrollContainer: {
+      width: '90%',
+      maxHeight: '80%',
+      backgroundColor: surfaceColor,
+      borderRadius: 16,
+      padding: 16,
+    },
+    modalContentContainer: {
+      paddingBottom: 16,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      marginBottom: 16,
+      color: textColor,
+      textAlign: 'center',
+    },
+    searchContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: borderColor,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      marginBottom: 16,
+      backgroundColor: surfaceColor,
+    },
+    searchIcon: {
+      marginRight: 8,
+    },
+    searchInput: {
+      flex: 1,
+      height: 40,
+      fontSize: 16,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: borderColor,
+      borderRadius: 8,
+      padding: 12,
+      marginBottom: 16,
+      backgroundColor: surfaceColor,
+      fontSize: 16,
+    },
+    removeFlightButton: {
+      backgroundColor: dangerColor,
+      padding: 6,
+      borderRadius: 15,
+      width: 30,
+      height: 30,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    loadingContent: {
+      backgroundColor: surfaceColor,
+      padding: 24,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    loadingText: {
+      marginTop: 16,
+      fontSize: 16,
+      color: textColor,
+    },
+    noResultsContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    noResultsText: {
+      textAlign: 'center',
+      color: textColor,
+      marginTop: 8,
+      fontSize: 16,
+    },
+    airportItem: {
+      flexDirection: 'row',
+      padding: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: borderColor,
+      alignItems: 'center',
+    },
+    airportIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: `${highlightColor}20`,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+    },
+    airportTextContainer: {
+      flex: 1,
+    },
+    airportCity: {
+      fontWeight: '600',
+      color: textColor,
+      fontSize: 16,
+    },
+    airportName: {
+      color: secondaryColor,
+      fontSize: 14,
+      marginTop: 2,
+    },
+    airportCode: {
+      fontWeight: 'bold',
+      color: highlightColor,
+      fontSize: 16,
+      marginLeft: 8,
+    },
+    travelerInputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 8,
+    },
+    travelerButton: {
+      backgroundColor: highlightColor,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    disabledButton: {
+      backgroundColor: secondaryColor,
+    },
+    travelerButtonText: {
+      color: 'white',
+      fontSize: 20,
+      fontWeight: 'bold',
+    },
+    travelerCount: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      color: textColor,
+      marginHorizontal: 24,
+      minWidth: 30,
+      textAlign: 'center',
+    },
+    classOptionsContainer: {
+      marginBottom: 16,
+    },
+    classOption: {
+      padding: 16,
+      borderWidth: 1,
+      borderColor: borderColor,
+      borderRadius: 8,
+      marginBottom: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    classIconContainer: {
+      width: 24,
+      alignItems: 'center',
+      marginRight: 12,
+    },
+    selectedClassOption: {
+      backgroundColor: highlightColor,
+      borderColor: highlightColor,
+    },
+    classOptionText: {
+      color: textColor,
+      fontSize: 16,
+      fontWeight: '500',
+    },
+    selectedClassOptionText: {
+      color: 'white',
+    },
+    closeModalButton: {
+      backgroundColor: surfaceColor,
+      padding: 12,
+      borderRadius: 8,
+      alignItems: 'center',
+      marginTop: 8,
+      borderWidth: 1,
+      borderColor: borderColor,
+    },
+    closeModalButtonText: {
+      color: highlightColor,
+      fontSize: 16,
+      fontWeight: 'bold',
+    },
+    confirmButton: {
+      backgroundColor: highlightColor,
+      padding: 12,
+      borderRadius: 8,
+      alignItems: 'center',
+      marginTop: 16,
+    },
+    confirmButtonText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: 'bold',
+    },
+    currencyItem: {
+      padding: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: borderColor,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    selectedCurrencyItem: {
+      backgroundColor: `${highlightColor}20`,
+    },
+    currencyText: {
+      color: textColor,
+      fontSize: 16,
+    },
+    selectedCurrencyText: {
+      fontWeight: 'bold',
+      color: highlightColor,
+    },
+  });
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -567,126 +1085,111 @@ const FlightSearch: React.FC = () => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
       >
-        <View style={styles.contentContainer}>
-          {/* Loading Modal */}
-          <Modal visible={loading} transparent animationType="fade">
-            <View style={styles.loadingContainer}>
-              <View style={styles.loadingContent}>
-                <ActivityIndicator size="large" color={theme.colors.primary} />
-                <Text style={styles.loadingText}>Searching for flights...</Text>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.contentContainer}>
+            <Modal visible={loading} transparent animationType="fade">
+              <View style={styles.loadingContainer}>
+                <View style={styles.loadingContent}>
+                  <ActivityIndicator size="large" color={highlightColor} />
+                  <Text style={styles.loadingText}>Searching for flights...</Text>
+                </View>
               </View>
-            </View>
-          </Modal>
+            </Modal>
 
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => {}} accessibilityLabel="Go back">
-              <FontAwesome5 name="arrow-left" size={24} color={theme.colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.title}>Flight Search</Text>
-            <View style={styles.placeholder} />
-          </View>
-
-          {/* Trip Type Selector */}
-          {renderTripTypeButtons()}
-
-          {/* Travel Details */}
-          <View style={styles.detailsContainer}>
-            <View style={styles.travelersAndClass}>
-              <TouchableOpacity 
-                onPress={() => openModal('class')} 
-                style={styles.detailItem}
-                accessibilityLabel="Select travel class"
-              >
-                <FontAwesome5 name="chair" size={16} color={theme.colors.primary} />
-                <Text style={styles.detailText}>
-                  Class: {searchParams.classType}
-                </Text>
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => navigation.goBack()}>
+                <MaterialIcons name="arrow-back" size={24} color={textColor} />
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                onPress={() => openModal('travelers')} 
-                style={styles.detailItem}
-                accessibilityLabel="Select number of travelers"
-              >
-                <FontAwesome5 name="users" size={16} color={theme.colors.primary} />
-                <Text style={styles.detailText}>
-                  Travelers: {searchParams.travelers}
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.title}>Flight Search</Text>
+              <View style={styles.placeholder} />
             </View>
 
-            {/* Flight Segments */}
-            {searchParams.flights.map((flight, index) => renderFlightSegment(flight, index))}
+            {renderTripTypeButtons()}
 
-            {/* Add Flight (for multi-city) */}
-            {isMultiCity && (
-              <TouchableOpacity 
-                onPress={addFlight} 
-                style={[
-                  styles.addFlightButton,
-                  !canAddFlight && styles.disabledAddButton
-                ]}
-                disabled={!canAddFlight}
-                accessibilityLabel="Add another flight"
-              >
-                <FontAwesome5 
-                  name="plus-circle" 
-                  size={20} 
-                  color={canAddFlight ? theme.colors.primary : theme.colors.secondary} 
-                />
-                <Text style={[
-                  styles.addFlightText,
-                  !canAddFlight && styles.disabledText
-                ]}>
-                  Add Flight
-                </Text>
-              </TouchableOpacity>
-            )}
+            <View style={styles.detailsContainer}>
+              {renderOptionsRow()}
+
+              {searchParams.flights.map((flight, index) => renderFlightSegment(flight, index))}
+
+              {isMultiCity && (
+                <Pressable
+                  onPress={addFlight}
+                  style={({ pressed }) => [
+                    styles.addFlightButton,
+                    !canAddFlight && styles.disabledAddButton,
+                    pressed && styles.pressedButton
+                  ]}
+                  disabled={!canAddFlight}
+                >
+                  <Ionicons
+                    name="add"
+                    size={20}
+                    color={canAddFlight ? highlightColor : secondaryColor}
+                  />
+                  <Text style={[
+                    styles.addFlightText,
+                    !canAddFlight && styles.disabledText
+                  ]}>
+                    Add Flight
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
+            <Pressable
+              onPress={handleSearch}
+              style={({ pressed }) => [
+                styles.searchButton,
+                pressed && styles.pressedButton
+              ]}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <>
+                  <FontAwesome5 name="search" size={16} color="white" />
+                  <Text style={styles.searchButtonText}> Search Flights</Text>
+                </>
+              )}
+            </Pressable>
+
+            {/* Ensure FlightResultsModal is defined or imported */}
+            {/* Example: Uncomment and replace with the correct import or definition */}
+            <FlightResultsModal
+              visible={resultsVisible}
+              onClose={() => setResultsVisible(false)}
+              results={flightResults}
+              searchParams={searchParams}
+              onSelectFlight={(flight) => console.log('Selected flight:', flight)}
+              navigation={navigation}
+            />
           </View>
+        </ScrollView>
 
-          {/* Search Button */}
-          <TouchableOpacity 
-            onPress={handleSearch} 
-            style={styles.searchButton}
-            disabled={loading}
-            accessibilityLabel="Search for flights"
-          >
-            {loading ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <>
-                <FontAwesome5 name="search" size={16} color="white" />
-                <Text style={styles.searchButtonText}> Search Flights</Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          {/* Results Modal */}
-          <FlightResultsModal 
-            visible={resultsVisible} 
-            onClose={() => setResultsVisible(false)} 
-            results={flightResults} 
-            searchParams={searchParams}
-          />
-        </View>
-
-        {/* Input Modals */}
-        <Modal 
-          visible={modalState.visible} 
-          transparent 
+        <Modal
+          visible={modalState.visible}
+          transparent
           animationType="slide"
           onRequestClose={closeModal}
         >
           <View style={styles.modalContainer}>
             <View style={styles.modalScrollContainer}>
               {renderModalContent()}
-              <TouchableOpacity 
-                onPress={closeModal} 
-                style={styles.closeModalButton}
+              <Pressable
+                onPress={closeModal}
+                style={({ pressed }) => [
+                  styles.closeModalButton,
+                  pressed && styles.pressedButton
+                ]}
               >
                 <Text style={styles.closeModalButtonText}>Close</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           </View>
         </Modal>
@@ -694,295 +1197,5 @@ const FlightSearch: React.FC = () => {
     </SafeAreaView>
   );
 };
-
-// Styles
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    flex: 1,
-    padding: theme.spacing.medium,
-    paddingBottom: theme.spacing.large,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.medium,
-  },
-  title: {
-    fontSize: theme.fontSize.xlarge,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-  },
-  placeholder: {
-    width: 24,
-  },
-  tripTypeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: theme.spacing.medium,
-  },
-  tripTypeButton: {
-    padding: theme.spacing.small,
-    borderRadius: theme.borderRadius.medium,
-    backgroundColor: theme.colors.secondary,
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: theme.spacing.small,
-  },
-  activeButton: {
-    backgroundColor: theme.colors.primary,
-  },
-  buttonText: {
-    fontSize: theme.fontSize.small,
-    color: theme.colors.text,
-  },
-  activeButtonText: {
-    color: 'white',
-  },
-  detailsContainer: {
-    marginBottom: theme.spacing.large,
-  },
-  travelersAndClass: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.medium,
-  },
-  flightSegment: {
-    marginBottom: theme.spacing.medium,
-    padding: theme.spacing.medium,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.medium,
-    backgroundColor: theme.colors.background,
-  },
-  flightSegmentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.small,
-  },
-  flightTitle: {
-    fontSize: theme.fontSize.large,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: theme.spacing.small,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.small,
-    marginVertical: theme.spacing.small,
-    backgroundColor: theme.colors.background,
-  },
-  detailText: {
-    marginLeft: theme.spacing.small,
-    fontSize: theme.fontSize.medium,
-    color: theme.colors.text,
-  },
-  addFlightButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: theme.spacing.small,
-    padding: theme.spacing.small,
-    borderRadius: theme.borderRadius.small,
-    backgroundColor: theme.colors.background,
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
-  },
-  disabledAddButton: {
-    borderColor: theme.colors.secondary,
-  },
-  addFlightText: {
-    marginLeft: theme.spacing.small,
-    fontSize: theme.fontSize.medium,
-    color: theme.colors.primary,
-  },
-  disabledText: {
-    color: theme.colors.secondary,
-  },
-  searchButton: {
-    backgroundColor: theme.colors.primary,
-    padding: theme.spacing.medium,
-    borderRadius: theme.borderRadius.medium,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  searchButtonText: {
-    color: 'white',
-    fontSize: theme.fontSize.medium,
-    fontWeight: 'bold',
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalScrollContainer: {
-    width: '90%',
-    maxHeight: '80%',
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.borderRadius.medium,
-    padding: theme.spacing.medium,
-  },
-  modalContentContainer: {
-    paddingBottom: theme.spacing.medium,
-  },
-  modalTitle: {
-    fontSize: theme.fontSize.large,
-    fontWeight: 'bold',
-    marginBottom: theme.spacing.medium,
-    color: theme.colors.text,
-    textAlign: 'center',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.small,
-    padding: theme.spacing.small,
-    marginBottom: theme.spacing.medium,
-    backgroundColor: theme.colors.background,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.medium,
-  },
-  removeFlightButton: {
-    backgroundColor: theme.colors.danger,
-    padding: 6,
-    borderRadius: 15,
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  loadingContent: {
-    backgroundColor: theme.colors.background,
-    padding: theme.spacing.large,
-    borderRadius: theme.borderRadius.medium,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    marginTop: theme.spacing.medium,
-    fontSize: theme.fontSize.medium,
-    color: theme.colors.text,
-  },
-  noResultsText: {
-    textAlign: 'center',
-    color: theme.colors.text,
-    marginVertical: theme.spacing.medium,
-  },
-  airportItem: {
-    flexDirection: 'row',
-    padding: theme.spacing.small,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.secondary,
-  },
-  airportCode: {
-    fontWeight: 'bold',
-    marginRight: theme.spacing.small,
-    color: theme.colors.primary,
-    width: 40,
-  },
-  airportInfo: {
-    flex: 1,
-  },
-  airportCity: {
-    fontWeight: '500',
-    color: theme.colors.text,
-  },
-  airportName: {
-    color: theme.colors.text,
-    fontSize: theme.fontSize.small,
-  },
-  travelerInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: theme.spacing.small,
-  },
-  travelerButton: {
-    backgroundColor: theme.colors.primary,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  disabledButton: {
-    backgroundColor: theme.colors.secondary,
-  },
-  travelerButtonText: {
-    color: 'white',
-    fontSize: theme.fontSize.large,
-    fontWeight: 'bold',
-  },
-  travelerCount: {
-    fontSize: theme.fontSize.large,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-    marginHorizontal: theme.spacing.medium,
-    minWidth: 30,
-    textAlign: 'center',
-  },
-  travelerNote: {
-    textAlign: 'center',
-    color: theme.colors.text,
-    fontSize: theme.fontSize.small,
-    marginBottom: theme.spacing.small,
-  },
-  classOptionsContainer: {
-    marginBottom: theme.spacing.medium,
-  },
-  classOption: {
-    padding: theme.spacing.medium,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.small,
-    marginBottom: theme.spacing.small,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  selectedClassOption: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
-  },
-  classOptionText: {
-    color: theme.colors.text,
-    marginLeft: theme.spacing.small,
-    fontSize: theme.fontSize.medium,
-  },
-  selectedClassOptionText: {
-    color: 'white',
-  },
-  closeModalButton: {
-    backgroundColor: theme.colors.primary,
-    padding: theme.spacing.small,
-    borderRadius: theme.borderRadius.small,
-    alignItems: 'center',
-    marginTop: theme.spacing.small,
-  },
-  closeModalButtonText: {
-    color: 'white',
-    fontSize: theme.fontSize.medium,
-    fontWeight: 'bold',
-  },
-});
 
 export default FlightSearch;

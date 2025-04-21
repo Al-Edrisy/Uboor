@@ -41,7 +41,7 @@ export class FlightController {
   createBooking = async (req: Request, res: Response): Promise<void> => {
     try {
       const validatedData = FlightBookingSchema.parse(req.body);
-      const results = await this.amadeusService.createFlightOrder(validatedData.data);
+      const results = await this.amadeusService.createFlightOrder(validatedData);
       console.log(results);
       res.status(201).json(results);
     } catch (error) {

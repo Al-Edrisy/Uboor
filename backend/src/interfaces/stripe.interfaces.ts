@@ -1,7 +1,23 @@
-// stripe.interfaces.ts
+export interface CardDetails {
+  number: string;
+  exp_month: number;
+  exp_year: number;
+  cvc: string;
+}
+
 export interface PaymentIntentRequest {
-    amount: number; // Amount in cents (e.g., 1000 for $10.00)
-    currency: string; // Currency code (e.g., 'usd')
-    userId: string; // User ID associated with the payment
-    bookingId: string; // Booking ID associated with the payment
-  }
+  amount: number;
+  currency: string;
+  userId: string;
+  bookingId: string;
+  card?: CardDetails; // Make card optional
+}
+
+export interface PaymentResult {
+  id: string;
+  status: string;
+  amount: number;
+  currency: string;
+  clientSecret?: string;
+  requiresAction?: boolean;
+}

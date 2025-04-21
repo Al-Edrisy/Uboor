@@ -1,21 +1,29 @@
 import { z } from 'zod';
 
-// Schema for creating a payment intent
+export const CardDetailsSchema = z.object({
+  number: z.string()
+    .min(15, 'Card number must be at least 15 digits')
+    .max(16, 'Card number must be at most 16 digits')
+    .regex(/^\d+$/, 'Card number must contain only digits')
+    .refine(val => val.startsWith('558'), 'For testing, only cards starting with 558 are accepted'),
+  exp_month: z.number()
+    .min(1, 'Invalid month')
+    .max(12, 'Invalid month'),
+  exp_year: z.number()
+    .min(new Date().getFullYear(), 'Card has expired'),
+  cvc: z.string()
+    .min(3, 'CVC must be at least 3 digits')
+    .max(4, 'CVC must be at most 4 digits')
+    .regex(/^\d+$/, 'CVC must contain only digits')
+});
+
 export const PaymentIntentRequestSchema = z.object({
-  amount: z.number().min(1, 'Amount must be greater than 0'), // Amount must be a positive number
-  currency: z.string().length(3, 'Currency must be a 3-letter ISO code'), // Currency must be a 3-letter code
-  userId: z.string().uuid('Invalid user ID format'), // User ID must be a valid UUID
-  bookingId: z.string().uuid('Invalid booking ID format'), // Booking ID must be a valid UUID
+  amount: z.number().min(1, 'Amount must be greater than 0'),
+  currency: z.string().length(3, 'Currency must be a 3-letter ISO code'),
+  userId: z.string().uuid('Invalid user ID format'),
+  bookingId: z.string().uuid('Invalid booking ID format'),
+  card: CardDetailsSchema.optional() // Still optional but with validation when present
 });
 
-// Schema for the result of a payment intent
-export const PaymentResultSchema = z.object({
-  id: z.string(), // Payment intent ID
-  status: z.string(), // Payment intent status
-  amount: z.number(), // Amount charged
-  created: z.number(), // Timestamp of creation
-});
-
-// Export the schemas for use in other parts of the application
 export type PaymentIntentRequest = z.infer<typeof PaymentIntentRequestSchema>;
-export type PaymentResult = z.infer<typeof PaymentResultSchema>;
+export type CardDetails = z.infer<typeof CardDetailsSchema>;

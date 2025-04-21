@@ -9,7 +9,9 @@ data = pd.read_csv(csv_file_path)
 modified_data = data[['code', 'name', 'country', 'city', 'state', 'city_code']]
 
 # Generate the desired output format
-result = []
+result = {
+    "airportData": []
+}
 for index, row in modified_data.iterrows():
     # Extract the necessary information
     iata_code = row['code'][:3]  # First three characters of the code
@@ -19,7 +21,7 @@ for index, row in modified_data.iterrows():
     
     # Create the formatted string
     formatted_string = f"{iata_code}-{city}-{country}-{name}"
-    result.append(formatted_string)
+    result["airportData"].append(formatted_string)
 
 # Print the result
 print(result)

@@ -22,7 +22,7 @@
   "include": [
     "src/**/*",
     "test/**/*"
-  ],
+, "src/templates"  ],
   "exclude": [
     "node_modules",
     "dist"

@@ -1,34 +1,34 @@
-// app/modals/auth/ForgotPasswordModal.tsx
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Platform, 
-  StyleSheet, 
-  TextInput, 
-  Alert, 
-  KeyboardAvoidingView, 
-  ScrollView, 
-  TouchableOpacity,
-  ActivityIndicator,
-  Animated
-} from 'react-native';
+import { Platform, StyleSheet, Alert, KeyboardAvoidingView, ActivityIndicator, Animated, } from 'react-native';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import auth from '../../lib/firebase';
-import { Text, View } from '@/components/Themed';
+import { Text, View, TextInput, Button } from '@/components/Themed';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from './../../context/ThemeContext';
 
 export default function ForgotPasswordModal() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  
-  const fadeAnim = useRef(new Animated.Value( 0)).current;
+  const { theme } = useTheme();
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-    }).start();
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
   const handleResetPassword = async () => {
@@ -41,7 +41,7 @@ export default function ForgotPasswordModal() {
       setLoading(true);
       await sendPasswordResetEmail(auth, email);
       Alert.alert('Success', 'Check your email for a password reset link.');
-      router.push('/modals/auth/SignInModal'); // Redirect to sign-in after reset
+      router.push('/modals/auth/SignInModal');
     } catch (error) {
       Alert.alert('Error', error instanceof Error ? error.message : 'An unknown error occurred');
     } finally {
@@ -51,28 +51,59 @@ export default function ForgotPasswordModal() {
 
   return (
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
       style={styles.container}
     >
-      <Animated.View style={{ opacity: fadeAnim }}>
-        <Text style={styles.title}>Reset Password</Text>
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <View style={styles.formContainer}>
+        <View style={styles.header}>
+          <Ionicons name="key" size={48} style={styles.icon} />
+          <Text style={styles.title} type="headline">
+            Reset Password
+          </Text>
+          <Text style={styles.subtitle} type="paragraph">
+            Enter your email to receive a password reset link
+          </Text>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label} type="secondary">
+            Email Address
+          </Text>
           <TextInput
-            style={styles.input}
-            placeholder="Email"
+            placeholder="your@email.com"
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
+            keyboardType="email-address"
+            style={styles.input}
+            editable={!loading}
           />
-          <TouchableOpacity onPress={handleResetPassword} disabled={loading}>
-            <Text style={styles.button}>{loading ? 'Sending...' : 'Send Reset Link'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/modals/auth/SignInModal')}>
-            <Text style={styles.linkText}>Back to Sign In</Text>
-          </TouchableOpacity>
-          {loading && <ActivityIndicator size="large" color="#0000ff" />}
-        </ScrollView>
-      </Animated.View>
+        </View>
+
+        <Button
+          title={loading ? 'Sending...' : 'Send Reset Link'}
+          onPress={handleResetPassword}
+          disabled={loading}
+          variant="primary"
+          icon={loading ? null : <Ionicons name="send" size={20} />}
+          style={styles.resetButton}
+        />
+
+        {loading && (
+          <ActivityIndicator 
+            size="large" 
+            style={styles.loader}
+          />
+        )}
+
+        <Button
+          title="Back to Sign In"
+          onPress={() => router.push('/modals/auth/SignInModal')}
+          variant="text"
+          icon={<Ionicons name="arrow-back" size={20}/>}
+          style={styles.backButton}
+        />
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -83,35 +114,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
+  formContainer: {
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
   },
-  scrollContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
+  header: {
+    marginBottom: 32,
+    alignItems: 'center',
+  },
+  icon: {
+    marginBottom: 16,
+    backgroundColor: 'transparent',
+    
+  },
+  title: {
+    marginBottom: 8,
+  },
+  subtitle: {
+    textAlign: 'center',
+  },
+  inputGroup: {
+    marginBottom: 24,
+  },
+  label: {
+    marginBottom: 8,
+    fontSize: 14,
   },
   input: {
-    height: 40,
-    borderColor: 'gray',
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    marginBottom: 15,
-    borderRadius: 5,
+    width: '100%',
   },
-  button: {
-    textAlign: 'center',
-    backgroundColor: '#4285F4',
-    color: 'white',
-    padding: 10,
-    borderRadius: 5,
+  resetButton: {
+    marginTop: 8,
   },
-  linkText: {
-    color: 'blue',
-    textDecorationLine: 'underline',
-    textAlign: 'center',
-    marginTop: 10,
+  loader: {
+    marginTop: 16,
+  },
+  backButton: {
+    marginTop: 24,
+    alignSelf: 'center',
   },
 });

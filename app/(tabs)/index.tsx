@@ -8,27 +8,48 @@ import {
   FlatList,
   StyleSheet,
   Dimensions,
-  Text,
-  View,
+  Modal,
+  SafeAreaView,
+  TouchableWithoutFeedback,
+  TouchableOpacity,
+  TouchableHighlight,
+  TouchableNativeFeedback,
+  Touchable,
 } from 'react-native';
-import { FontAwesome5 } from '@expo/vector-icons';
+import { FontAwesome5, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Text, View, Button } from '@/components/Themed';
+import { useRouter } from 'expo-router';
+import { useTheme } from './../context/ThemeContext';
 import { useThemeColor } from '@/components/Themed';
-import { useRouter } from 'expo-router'; // Import useRouter for navigation
+import { useAuth } from '../context/AuthContext';
+import AuthModal from './../modal';
 
 const { width } = Dimensions.get('window');
+const CARD_WIDTH = width * 0.8;
+const FEATURE_CARD_WIDTH = 220;
+const SECTION_SPACING = 24;
 
-export default function TabOneScreen() {
+export default function HomeScreen() {
+  const { theme } = useTheme();
+  const { user } = useAuth();
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
+  const surfaceColor = useThemeColor({}, 'surface');
+  const highlightColor = useThemeColor({}, 'highlight');
   const tabIconDefaultColor = useThemeColor({}, 'tabIconDefault');
   const tabIconSelectedColor = useThemeColor({}, 'tabIconSelected');
+  const secondaryColor = useThemeColor({}, 'secondary');
+  const paragraphColor = useThemeColor({}, 'paragraph');
+  const borderColor = useThemeColor({}, 'border');
+  const headlineColor = useThemeColor({}, 'headline');
 
   const [selectedIcon, setSelectedIcon] = useState('hotel');
+  const [authModalVisible, setAuthModalVisible] = useState(false);
   const scaleValue = new Animated.Value(1);
-  const router = useRouter(); // Initialize router
+  const router = useRouter();
 
-  const handleIconPress = (icon) => {
+  const handleIconPress = (icon: string) => {
     setSelectedIcon(icon);
     Animated.sequence([
       Animated.timing(scaleValue, {
@@ -45,45 +66,44 @@ export default function TabOneScreen() {
       }),
     ]).start();
 
-    // Navigate to the respective screen based on the icon pressed
     switch (icon) {
       case 'hotel':
-        router.push('./../screens/StaysScreen'); 
+        router.push('./../screens/StaysScreen');
         break;
       case 'plane':
-        router.push('./../screens/FlightsScreen'); 
+        router.push('./../screens/FlightsScreen');
         break;
       case 'car':
-        router.push('./../screens/CarsScreen'); 
+        router.push('./../screens/CarsScreen');
         break;
       case 'box':
-        router.push('./../screens/PackagesScreen'); 
+        router.push('./../screens/PackagesScreen');
         break;
       case 'suitcase':
-        router.push('./../screens/ThingsToDoScreen'); 
+        router.push('./../screens/ThingsToDoScreen');
         break;
       default:
         break;
     }
   };
 
-  const flightCards = [
+  const travelFeatures = [
     {
       id: '1',
-      title: 'Get alerted if the flight price drops',
-      description: 'Never miss a deal on your next trip.',
+      title: 'Price Drop Alerts',
+      description: 'Get notified when flight prices decrease',
       icon: 'bell',
     },
     {
       id: '2',
-      title: 'Earn rewards on top of airline miles',
-      description: 'Double the rewards with every booking.',
+      title: 'Double Rewards',
+      description: 'Earn extra points on every booking',
       icon: 'gift',
     },
     {
       id: '3',
-      title: 'Exclusive member-only deals',
-      description: 'Save big with exclusive offers.',
+      title: 'Exclusive Deals',
+      description: 'Member-only discounts and offers',
       icon: 'star',
     },
   ];
@@ -92,9 +112,9 @@ export default function TabOneScreen() {
     {
       id: '1',
       image: 'https://storage.googleapis.com/a1aa/image/cvKZtdt4dV5fsWJH-Z5s92qm23-Yv1xVD3V_f1lhE-o.jpg',
-      title: 'Green Valley Ranch Resort and Spa',
-      location: 'Henderson',
-      rating: '9.0/10 Wonderful (1,847 reviews)',
+      title: 'Green Valley Ranch Resort',
+      location: 'Henderson, NV',
+      rating: '4.8 (1,847 reviews)',
       price: '$973',
       originalPrice: '$1,300',
       discount: '25% off',
@@ -103,195 +123,545 @@ export default function TabOneScreen() {
       id: '2',
       image: 'https://storage.googleapis.com/a1aa/image/AYwyQLFDOP0R7sb7_SOZ9dwMtP6MUPWHsqwAAYDq1nM.jpg',
       title: 'Suncoast Hotel and Casino',
-      location: 'Las Vegas',
-      rating: '9.0/10 Wonderful (1,847 reviews)',
+      location: 'Las Vegas, NV',
+      rating: '4.7 (2,103 reviews)',
       price: '$684',
       originalPrice: '$950',
       discount: '28% off',
     },
     {
       id: '3',
-      image: 'https://storage.googleapis.com/a1aa/image/AYwyQLFDOP0R7sb7_SOZ9dwMtP6MUPWHsqwAAYDq1nM.jpg',
-      title: 'Suncoast Hotel and Casino',
-      location: 'Las Vegas',
-      rating: '9.0/10 Wonderful (1,847 reviews)',
-      price: '$684',
-      originalPrice: '$950',
-      discount: '28% off',
+      image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1470&q=80',
+      title: 'Oceanview Paradise Resort',
+      location: 'Miami, FL',
+      rating: '4.9 (3,215 reviews)',
+      price: '$1,245',
+      originalPrice: '$1,750',
+      discount: '29% off',
     },
   ];
 
-  const renderFlightCard = ({ item }) => (
+  const renderFeatureCard = ({ item }: { item: typeof travelFeatures[0] }) => (
     <Pressable
       style={({ pressed }) => [
-        styles.card,
-        { backgroundColor: '#E3F2FD', marginRight: 10, opacity: pressed ? 0.8 : 1 },
+        styles.featureCard,
+        { 
+          backgroundColor: surfaceColor,
+          opacity: pressed ? 0.8 : 1,
+          borderColor: borderColor,
+        },
       ]}
     >
-      <FontAwesome5 name={item.icon} size={24} color="#1976D2" />
-      <Text style={{ fontSize: 16, fontWeight: 'bold', marginTop: 8 }}>{item.title}</Text>
-      <Text style={{ color: '#555', marginTop: 4 }}>{item.description}</Text>
+      <View style={[styles.featureIconContainer, { backgroundColor: `${highlightColor}20` }]}>
+        <FontAwesome5 
+          name={item.icon} 
+          size={20} 
+          color={highlightColor} 
+        />
+      </View>
+      <Text style={[styles.featureTitle, { color: headlineColor }]} numberOfLines={2}>
+        {item.title}
+      </Text>
+      <Text style={[styles.featureDescription, { color: paragraphColor }]}>
+        {item.description}
+      </Text>
     </Pressable>
   );
 
-  const renderHotelDeal = ({ item }) => (
+  const renderDealCard = ({ item }: { item: typeof vacationDeals[0] }) => (
     <Pressable
       style={({ pressed }) => [
-        styles.hotelCard,
-        { width: 200, marginRight: 10, opacity: pressed ? 0.8 : 1 },
+        styles.dealCard,
+        { 
+          opacity: pressed ? 0.8 : 1,
+          backgroundColor: surfaceColor,
+          borderColor: borderColor,
+        },
       ]}
     >
       <Image
         source={{ uri: item.image }}
-        style={{ width: '100%', height: 120, borderRadius: 6 }}
+        style={styles.dealImage}
         resizeMode="cover"
       />
-      <View style={{ padding: 8 }}>
-        <Text style={{ fontSize: 14, fontWeight: 'bold' }}>{item.title}</Text>
-        <Text style={{ color: '#777', fontSize: 12 }}>{item.location}</Text>
-        <Text style={{ color: '#777', fontSize: 12 }}>{item.rating}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-          <Text style={{ fontSize: 16, fontWeight: 'bold' }}>{item.price}</Text>
-          <Text style={{ textDecorationLine: 'line-through', marginLeft: 8, fontSize: 12 }}>{item.originalPrice}</Text>
+      <View style={styles.dealDetails}>
+        <View style={styles.dealHeader}>
+          <Text style={[styles.dealTitle, { color: headlineColor }]} numberOfLines={1}>
+            {item.title}
+          </Text>
+          <View style={styles.ratingContainer}>
+            <MaterialIcons name="star" size={14} color="#FFD700" />
+            <Text style={[styles.ratingText, { color: textColor }]}>
+              {item.rating}
+            </Text>
+          </View>
         </View>
-        <Text style={{ color: '#777', fontSize: 12, marginTop: 4 }}>{item.discount}</Text>
+        <Text style={[styles.dealLocation, { color: paragraphColor }]}>
+          {item.location}
+        </Text>
+        <View style={styles.priceContainer}>
+          <Text style={[styles.currentPrice, { color: highlightColor }]}>
+            {item.price}
+          </Text>
+          <Text style={[styles.originalPrice, { color: paragraphColor }]}>
+            {item.originalPrice}
+          </Text>
+          <View style={[styles.discountBadge, { backgroundColor: highlightColor }]}>
+            <Text style={styles.discountText}>
+              {item.discount}
+            </Text>
+          </View>
+        </View>
       </View>
     </Pressable>
   );
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor }} showsVerticalScrollIndicator={false}>
-      <View style={{ maxWidth: width, marginHorizontal: 'auto', paddingBottom: 24, paddingTop: 70 }}>
-        {/* Top Navigation */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 16, marginHorizontal: 10 }}>
-          {['hotel', 'plane', 'car', 'box', 'suitcase'].map((icon, index) => (
-            <Pressable key={icon} onPress={() => handleIconPress(icon)} accessibilityRole="button">
-              <View style={{ alignItems: 'center' }}>
-                <Animated.View style={{ transform: [{ scale: selectedIcon === icon ? scaleValue : 1 }] }}>
-                  <FontAwesome5 name={icon} size={30} color={selectedIcon === icon ? tabIconSelectedColor : tabIconDefaultColor} />
-                </Animated.View>
-                <Text style={{ color: textColor, fontSize: 12, marginTop: 4 }}>
-                  {['Stays', 'Flights', 'Cars', 'Packages', 'Things to do'][index]}
-                </Text>
-              </View>
+    <SafeAreaView style={[styles.container, { backgroundColor }]}>
+    <View style={[styles.container, { backgroundColor }]}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContainer}
+      >
+        
+
+        {/* Main Navigation */}
+        <View style={[styles.navContainer, { backgroundColor: surfaceColor }]}>
+          {['hotel', 'plane', 'car', 'box', 'suitcase'].map((icon) => (
+            <Pressable 
+              key={icon} 
+              onPress={() => handleIconPress(icon)}
+              style={styles.navButton}
+            >
+              <Animated.View style={[styles.navIconContainer, { 
+                backgroundColor: selectedIcon === icon ? `${highlightColor}20` : 'transparent',
+                transform: [{ scale: selectedIcon === icon ? scaleValue : 1 }],
+              }]}>
+                <FontAwesome5 
+                  name={icon} 
+                  size={22} 
+                  color={selectedIcon === icon ? highlightColor : tabIconDefaultColor} 
+                />
+              </Animated.View>
+              <Text style={[styles.navLabel, { 
+                color: selectedIcon === icon ? highlightColor : tabIconDefaultColor,
+              }]}>
+                {icon === 'hotel' && 'Stays'}
+                {icon === 'plane' && 'Flights'}
+                {icon === 'car' && 'Cars'}
+                {icon === 'box' && 'Packages'}
+                {icon === 'suitcase' && 'Activities'}
+              </Text>
             </Pressable>
           ))}
         </View>
 
-        {/* Sign In Section */}
-        <LinearGradient
-          colors={['#261FB3', '#161179']}
-          style={[styles.card, { marginHorizontal: 20, padding: 16, marginTop: 10 }]}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 22 }}>
-            <FontAwesome5 name="star" size={20} color="white" />
-            <Text style={{ fontSize: 14, fontWeight: '600', marginLeft: 8, color: 'white' }}>
-              Sign in to access One Key Member Prices
-            </Text>
-          </View>
-          <Pressable
-            style={({ pressed }) => ({
-              backgroundColor: pressed ? 'rgba(217, 222, 242, 0.96)' : 'white',
-              paddingVertical: 8,
-              borderRadius: 11,
-            })}
-            onPress={() => console.log('Sign in pressed')}
-            accessibilityRole="button"
+        {/* Show sign-in section only if user is not logged in */}
+        {!user && (
+          <LinearGradient
+            colors={theme === 'light' ? ['#261FB3', '#161179'] : ['#7f5af0', '#5e3fdc']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.membershipBanner}
           >
-            <Text style={{ color: '#000', textAlign: 'center', fontWeight: 'bold' }}>Sign in</Text>
-          </Pressable>
-        </LinearGradient>
+            <View style={styles.bannerContent}>
+              <View style={styles.crownIcon}>
+                <FontAwesome5 name="crown" size={20} color="white" />
+              </View>
+              <View style={styles.bannerTextContainer}>
+                <Text style={styles.bannerTitle}>Unlock Member Benefits</Text>
+                <Text style={styles.bannerSubtitle}>Sign in for exclusive prices and rewards</Text>
+              </View>
+            </View>
+            <Button
+              title="Sign In / Join"
+              onPress={() => setAuthModalVisible(true)}
+              style={styles.bannerButton}
+              textStyle={{ color: highlightColor }}
+            />
+          </LinearGradient>
+        )}
 
-        {/* No Vacation Sale Section */}
-        <View style={[styles.card, { marginHorizontal: 20, padding: 0, overflow: 'hidden', marginTop: 15 }]}>
+        {/* Featured Deals */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: headlineColor }]}>
+              Featured Vacation Deals
+            </Text>
+            <Pressable>
+              <Text style={[styles.seeAllText, { color: highlightColor }]}>
+                See all
+              </Text>
+            </Pressable>
+          </View>
+          
+          <FlatList
+            horizontal
+            data={vacationDeals}
+            keyExtractor={(item) => item.id}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.dealsContainer}
+            renderItem={renderDealCard}
+            snapToInterval={CARD_WIDTH + 16}
+            decelerationRate="fast"
+          />
+        </View>
+
+        {/* Travel Features */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: headlineColor }]}>
+              Travel Perks
+            </Text>
+            <Pressable>
+              <Text style={[styles.seeAllText, { color: highlightColor }]}>
+                See all
+              </Text>
+            </Pressable>
+          </View>
+          
+          <FlatList
+            horizontal
+            data={travelFeatures}
+            keyExtractor={(item) => item.id}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.featuresContainer}
+            renderItem={renderFeatureCard}
+          />
+        </View>
+
+        {/* Promotion Banner */}
+        <View style={[styles.promoBanner, { borderColor: borderColor }]}>
           <Image
-            source={{ uri:'https://placehold.co/600x400' }}
-            style={{width: '100%',height: 200 }}
+            source={{ uri: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1470&q=80' }}
+            style={styles.promoImage}
             resizeMode="cover"
           />
           <LinearGradient
-            colors={['rgb(19, 4, 156)', 'rgba(0, 91, 237, 1)', 'transparent']}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            colors={['rgba(0,0,0,0.7)', 'transparent']}
+            style={styles.promoGradientTop}
           />
-          <View style={{ position: 'absolute', left: 16, bottom: 16, right: 16 }}>
-            <Text style={{ color: 'white', fontSize: 22, fontWeight: 'bold', textShadowColor: 'rgba(2, 2, 2, 0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>
-              No Vacation Sale
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.7)']}
+            style={styles.promoGradientBottom}
+          />
+          <View style={styles.promoContent}>
+            <Text style={styles.promoTitle}>
+              Summer Vacation Sale
             </Text>
-            <Text style={{ color: 'white', fontSize: 14, marginTop: 4, textShadowColor: 'rgba(21, 21, 21, 0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>
-              Book by Mar 31 for travel by Sep 8, 2025 to save
+            <Text style={styles.promoSubtitle}>
+              Book by June 30 for travel through September
             </Text>
-            <Pressable
-              style={({ pressed }) => ({
-                marginTop: 12,
-                backgroundColor: pressed ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.9)',
-                paddingVertical: 10,
-                borderRadius: 8,
-                alignItems: 'center',
-              })}
+            <Button
+              title="Explore Deals"
               onPress={() => console.log('Learn More pressed')}
-              accessibilityRole="button"
-            >
-              <Text style={{ color: '#000', fontWeight: 'bold' }}>Learn More</Text>
-            </Pressable>
+              style={styles.promoButton}
+              textStyle={{ color: 'white' }}
+            />
           </View>
         </View>
+      </ScrollView>
 
-        {/* Hotel Deals Section */}
-        <View style={{ marginTop: 16, marginHorizontal: 10 }}>
-          <LinearGradient
-            colors={['#160F30', '#261FB3', '#261FC3']}
-            style={[styles.hotelContainer, { padding: 15, borderRadius: 8 }]}
-          >
-            <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>
-              Unknown Vacation Sale: Book by Mar 31
-            </Text>
-            <Text style={{ color: 'white', fontSize: 14, marginTop: 4 }}>
-              Showing deals for May 16 - May 18
-            </Text>
-            <FlatList
-              horizontal
-              data={vacationDeals}
-              keyExtractor={(item) => item.id}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingTop: 16, paddingRight: 10 }}
-              renderItem={renderHotelDeal}
-              initialNumToRender={2}
-            />
-          </LinearGradient>
-        </View>
-      </View>
-    </ScrollView>
+      {/* Auth Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={authModalVisible}
+        onRequestClose={() => setAuthModalVisible(false)}
+      >
+        <AuthModal onClose={() => setAuthModalVisible(false)} />
+      </Modal>
+    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 12,
+  container: {
+    marginTop: 35,
+    flex: 1
+    },
+  scrollContainer: {
+    paddingBottom: 24,
+  },
+  headerContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 16,
+  },
+  welcomeText: {
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  navContainer: {
+    
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    marginHorizontal: 24,
+    marginBottom: SECTION_SPACING,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  navButton: {
+    alignItems: 'center',
+    minWidth: 60,
+  },
+  navIconContainer: {
+    padding: 12,
+    borderRadius: 16,
+  },
+  navLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 8,
+  },
+  membershipBanner: {
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 6,
+    marginHorizontal: 24,
+    marginBottom: SECTION_SPACING,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 0.4,
-    },
-    shadowOpacity: 0.20,
-    shadowRadius: 0.84,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 6,
+    
   },
-  hotelContainer: {
-    borderRadius: 8,
-    marginHorizontal: 10,
+  bannerContent: {
+
+    backgroundColor: 'transparent', 
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  hotelCard: {
-    backgroundColor: 'white',
-    borderRadius: 8,
+  crownIcon: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  bannerTextContainer: {
+    backgroundColor: 'transparent', 
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    marginRight: 12,
+    marginLeft: 8,
+    padding: 4,
+    flex: 1,
+  },
+  bannerTitle: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  bannerSubtitle: {
+    color: 'white',
+    fontSize: 14,
+  },
+  bannerButton: {
+    borderRadius: 12,
+    height: 48,
+  },
+  sectionContainer: {
+    marginBottom: SECTION_SPACING,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  seeAllText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  dealsContainer: {
+    paddingLeft: 24,
+    paddingRight: 8,
+    paddingBottom: 8,
+  },
+  dealCard: {
+    width: CARD_WIDTH,
+    marginRight: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  dealImage: {
+    width: '100%',
+    height: 180,
+  },
+  dealDetails: {
+    padding: 16,
+  },
+  dealHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  dealTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ratingText: {
+    fontSize: 12,
+    marginLeft: 4,
+  },
+  dealLocation: {
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  currentPrice: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  originalPrice: {
+    fontSize: 12,
+    textDecorationLine: 'line-through',
+    marginLeft: 8,
+    opacity: 0.7,
+  },
+  discountBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 'auto',
+  },
+  discountText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  featuresContainer: {
+    paddingLeft: 24,
+    paddingRight: 8,
+    paddingBottom: 8,
+  },
+  featureCard: {
+    width: FEATURE_CARD_WIDTH,
+    marginRight: 16,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  featureIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  featureTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  featureDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+    opacity: 0.8,
+  },
+  promoBanner: {
+    height: 200,
+    borderRadius: 16,
+    marginHorizontal: 24,
+    marginTop: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
+    position: 'relative',
+  },
+  promoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  promoGradientTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '40%',
+  },
+  promoGradientBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '60%',
+  },
+  promoContent: {
+    position: 'absolute',
+    left: 0,
+    bottom: 24,
+    right: 14,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    width: '100%',
+    height: '40%',
+    shadowColor: '#000',
+  },
+  promoTitle: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  promoSubtitle: {
+    color: 'white',
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  promoButton: {
+    borderWidth: 1,
+    borderColor: 'white',
+    borderRadius: 12,
+    height: 48,
   },
 });

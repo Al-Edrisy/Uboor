@@ -30,9 +30,10 @@ const OriginDestinationSchema = z.object({
 
 const TravelerSchema = z.object({
   id: z.string(),
-  travelerType: z.enum(['ADULT', 'CHILD', 'INFANT']),
-  fareOptions: z.array(z.enum(['STANDARD', 'FLEXIBLE']))
+  travelerType: z.enum(['ADULT', 'CHILD', 'INFANT']).optional(),
+  fareOptions: z.array(z.enum(['STANDARD', 'FLEXIBLE'])).optional(),
 });
+
 
 const CabinRestrictionSchema = z.object({
   cabin: z.enum(['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS', 'FIRST']).optional(),
@@ -112,9 +113,11 @@ const FareDetailsSchema = z.object({
   cabin: z.enum(['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS', 'FIRST']),
   fareBasis: z.string(),
   brandedFare: z.string(),
-  brandedFareLabel: z.string(),
+  brandedFareLabel: z.string().optional(),
   class: z.string(),
-  includedCheckedBags: z.object({ quantity: z.number() }).optional(),
+  includedCheckedBags: z.object({
+    quantity: z.number().int().nonnegative().optional().default(0)
+  }).optional(),
   amenities: z.array(AmenitySchema)
 });
 
@@ -157,27 +160,42 @@ export const FlightPricingSchema = z.object({
 // ---------------------------
 // Booking Schemas
 // ---------------------------
-// Common Utility Schemas
+const FareDetailsSchema_order = z.object({
+  segmentId: z.string(),
+  cabin: z.enum(['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS', 'FIRST']),
+  fareBasis: z.string(),
+  brandedFare: z.string(),
+  brandedFareLabel: z.string().optional(),
+  class: z.string(),
+  includedCheckedBags: z.object({ 
+    weight: z.number(),
+    weightUnit: z.string()
+  }).optional(),
+  includedCabinBags: z.object({
+    quantity: z.number()
+  }).optional(),
+  amenities: z.array(AmenitySchema).optional()
+});
 
-// Define the necessary schemas for the flight booking
 const FlightOfferSchema_order = z.object({
   type: z.literal('flight-offer'),
   id: z.string(),
   source: z.string(),
   instantTicketingRequired: z.boolean().optional(),
   nonHomogeneous: z.boolean().optional(),
-  lastTicketingDate: z.string().optional(), // Use appropriate date schema if needed
+  paymentCardRequired: z.boolean().optional(),
+  lastTicketingDate: z.string().optional(),
   itineraries: z.array(z.object({
     segments: z.array(z.object({
       departure: z.object({
         iataCode: z.string().length(3),
         terminal: z.string().optional(),
-        at: z.string().optional() // Use appropriate datetime schema if needed
+        at: z.string().optional()
       }),
       arrival: z.object({
         iataCode: z.string().length(3),
         terminal: z.string().optional(),
-        at: z.string().optional() // Use appropriate datetime schema if needed
+        at: z.string().optional()
       }),
       carrierCode: z.string(),
       number: z.string(),
@@ -186,7 +204,12 @@ const FlightOfferSchema_order = z.object({
       duration: z.string(),
       id: z.string(),
       numberOfStops: z.number().int().nonnegative(),
-      blacklistedInEU: z.boolean().optional() // Make this optional
+      blacklistedInEU: z.boolean().optional(),
+      co2Emissions: z.array(z.object({
+        weight: z.number(),
+        weightUnit: z.string(),
+        cabin: z.string()
+      })).optional()
     }))
   })),
   price: z.object({
@@ -198,8 +221,13 @@ const FlightOfferSchema_order = z.object({
       type: z.string()
     })).optional(),
     grandTotal: z.string(),
-    billingCurrency: z.string().length(3).optional() // Make this optional
+    billingCurrency: z.string().length(3).optional()
   }),
+  pricingOptions: z.object({
+    fareType: z.array(z.string()),
+    includedCheckedBagsOnly: z.boolean()
+  }).optional(),
+  validatingAirlineCodes: z.array(z.string()).nonempty(),
   travelerPricings: z.array(z.object({
     travelerId: z.string(),
     fareOption: z.string(),
@@ -207,25 +235,20 @@ const FlightOfferSchema_order = z.object({
     price: z.object({
       currency: z.string().length(3),
       total: z.string(),
-      base: z.string()
+      base: z.string(),
+      taxes: z.array(z.object({
+        amount: z.string(),
+        code: z.string()
+      })).optional(),
+      refundableTaxes: z.string().optional()
     }),
-    fareDetailsBySegment: z.array(z.object({
-      segmentId: z.string(),
-      cabin: z.enum(['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS', 'FIRST']),
-      fareBasis: z.string(),
-      brandedFare: z.string(),
-      brandedFareLabel: z.string().optional(), // Make this optional
-      class: z.string(),
-      includedCheckedBags: z.object({ quantity: z.number() }).optional()
-    }))
-  })),
-  validatingAirlineCodes: z.array(z.string()).nonempty() // Add this line
+    fareDetailsBySegment: z.array(FareDetailsSchema_order)
+  }))
 });
 
-// Define the Traveler schema
 const TravelerSchema_order = z.object({
   id: z.string(),
-  dateOfBirth: z.string().optional(), // Use appropriate date schema if needed
+  dateOfBirth: z.string().optional(),
   name: z.object({
     firstName: z.string(),
     lastName: z.string()
@@ -243,9 +266,9 @@ const TravelerSchema_order = z.object({
     documentType: z.enum(['PASSPORT', 'ID_CARD']),
     birthPlace: z.string().optional(),
     issuanceLocation: z.string().optional(),
-    issuanceDate: z.string().optional(), // Use appropriate date schema if needed
+    issuanceDate: z.string().optional(),
     number: z.string(),
-    expiryDate: z.string().optional(), // Use appropriate date schema if needed
+    expiryDate: z.string().optional(),
     issuanceCountry: z.string().length(2),
     validityCountry: z.string().length(2),
     nationality: z.string().length(2),
@@ -253,7 +276,6 @@ const TravelerSchema_order = z.object({
   })).optional()
 });
 
-// Define the Remarks schema
 const RemarksSchema = z.object({
   general: z.array(z.object({
     subType: z.string().optional(),
@@ -261,26 +283,11 @@ const RemarksSchema = z.object({
   })).optional()
 });
 
-// Define the Ticketing Agreement schema
 const TicketingAgreementSchema = z.object({
   option: z.enum(['DELAY_TO_CANCEL']).optional(),
   delay: z.string().optional()
 });
 
-const FareDetailsSchema_order = z.object({
-  segmentId: z.string(),
-  cabin: z.enum(['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS', 'FIRST']),
-  fareBasis: z.string(),
-  brandedFare: z.string(),
-  brandedFareLabel: z.string().optional(), // Make this optional
-  class: z.string(),
-  includedCheckedBags: z.object({ quantity: z.number() }).optional(),
-  amenities: z.array(AmenitySchema)
-});
-
-
-
-// Define the Contact Info schema
 const ContactInfoSchema = z.object({
   addresseeName: z.object({
     firstName: z.string(),
@@ -302,18 +309,17 @@ const ContactInfoSchema = z.object({
   }).optional()
 });
 
-// Main Flight Booking Schema
+
 export const FlightBookingSchema = z.object({
   data: z.object({
     type: z.literal('flight-order'),
-    flightOffers: z.array(FlightOfferSchema_order).optional(),
-    travelers: z.array(TravelerSchema_order).optional(),
+    flightOffers: z.array(FlightOfferSchema_order),
+    travelers: z.array(TravelerSchema_order),
     remarks: RemarksSchema.optional(),
     ticketingAgreement: TicketingAgreementSchema.optional(),
     contacts: z.array(ContactInfoSchema).optional()
   })
 });
-
 
 // ---------------------------
 // Export Consolidated Schemas

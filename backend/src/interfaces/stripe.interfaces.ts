@@ -9,8 +9,8 @@ export interface PaymentIntentRequest {
   amount: number;
   currency: string;
   userId: string;
-  bookingId: string;
-  card?: CardDetails; // Make card optional
+  bookingId?: string;
+  card?: CardDetails; 
 }
 
 export interface PaymentResult {

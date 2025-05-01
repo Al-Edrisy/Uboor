@@ -1,529 +1,770 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import {
-  Modal,
+  Animated,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
-  StyleSheet,
   ScrollView,
   ActivityIndicator,
   Alert,
-  Picker
+  FlatList,
+  StyleSheet,
+  Modal,
+  Dimensions,
+  Linking
 } from 'react-native';
+import { BASE_URL } from '@env';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useTheme } from '@/app/context/ThemeContext';
+import { useThemeColor } from '@/components/Themed';
+import { Document, Traveler, FlightOffer, FlightOrder, FlightBookingModalProps } from "./types/bookingTypes";
+import TravelerModal from './components/TravelerModal';
+import BottomSheet from './components/BottomSheet';
+import DocumentModal from './components/DocumentModal';
+import PaymentModal from './components/PaymentModal';
+import TravelerCard from './components/TravelerCard';
+import { auth, db } from './../../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { IPDFData } from './types/pdfTypes';
 
-type Traveler = {
-  id: string;
-  dateOfBirth: string;
-  name: {
-    firstName: string;
-    lastName: string;
-  };
-  gender: 'MALE' | 'FEMALE';
-  contact: {
-    emailAddress: string;
-    phones: {
-      deviceType: string;
-      countryCallingCode: string;
-      number: string;
-    }[];
-  };
-  documents?: {
-    documentType: string;
-    number: string;
-    expiryDate?: string;
-    issuanceCountry?: string;
-  }[];
+const { width, height } = Dimensions.get('window');
+
+const DEFAULT_CONTACT = {
+  emailAddress: 'uboorapp@gmail.com',
+  phone: {
+    countryCallingCode: '90',
+    number: '5488270084',
+    deviceType: 'MOBILE' as const
+  }
 };
 
-type FlightOffer = {
-  id: string;
-  price: {
-    total: string;
-    currency: string;
-  };
-  travelerPricings: {
-    travelerId: string;
-    travelerType: string;
-  }[];
-  itineraries: {
-    segments: {
-      departure: {
-        iataCode: string;
-        at: string;
-      };
-      arrival: {
-        iataCode: string;
-        at: string;
-      };
-    }[];
-  }[];
-};
-
-type FlightOrder = {
-  id: string;
-  associatedRecords?: {
-    reference: string;
-    creationDate: string;
-  }[];
-  travelers: Traveler[];
-};
-
-type FlightBookingModalProps = {
-  visible: boolean;
-  onClose: () => void;
-  flightOffer: FlightOffer;
-  onBookingComplete: (order: FlightOrder) => void;
-};
-
-const FlightBookingModal: React.FC<FlightBookingModalProps> = ({
+const FlightBookingModal: React.FC<FlightBookingModalProps> = memo(({
   visible,
   onClose,
   flightOffer,
-  onBookingComplete
+  onBookingComplete,
 }) => {
-  const [currentStep, setCurrentStep] = useState<'travelerInfo' | 'confirmation'>('travelerInfo');
+  const { theme } = useTheme();
+  const backgroundColor = useThemeColor({}, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const surfaceColor = useThemeColor({}, 'surface');
+  const highlightColor = useThemeColor({}, 'highlight');
+  const borderColor = useThemeColor({}, 'border');
+  const secondaryColor = useThemeColor({}, 'secondary');
+  const dangerColor = useThemeColor({}, 'error');
+  const placeholderColor = useThemeColor({}, 'placeholder');
+
   const [travelers, setTravelers] = useState<Traveler[]>([]);
-  const [contactEmail, setContactEmail] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [bookingResult, setBookingResult] = useState<FlightOrder | null>(null);
-  const [errors, setErrors] = useState<{[key: string]: string}>({});
+  const [currentTravelerIndex, setCurrentTravelerIndex] = useState(0);
+  const [activeModal, setActiveModal] = useState<'traveler' | 'document' | 'payment' | null>(null);
+  const [currentStep, setCurrentStep] = useState<'main' | 'confirmation' | 'payment'>('main');
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (flightOffer) {
-      const initialTravelers = flightOffer.travelerPricings.map(t => ({
+    if (flightOffer && visible) {
+      const initialTravelers: Traveler[] = flightOffer.travelerPricings.map(t => ({
         id: t.travelerId,
         dateOfBirth: '',
         name: { firstName: '', lastName: '' },
         gender: 'MALE',
+        travelerType: t.travelerType,
+        nationality: 'US',
         contact: { 
-          emailAddress: '', 
-          phones: [{ deviceType: 'MOBILE', countryCallingCode: '1', number: '' }] 
-        }
+          emailAddress: DEFAULT_CONTACT.emailAddress,
+          phones: [DEFAULT_CONTACT.phone]
+        },
+        documents: [{
+          documentType: 'PASSPORT',
+          number: '',
+          expiryDate: '',
+          issuanceCountry: '',
+          validityCountry: '',
+          nationality: 'US',
+          holder: true,
+          birthPlace: 'Unknown',
+          issuanceLocation: 'Unknown',
+          issuanceDate: new Date().toISOString().split('T')[0]
+        }]
       }));
       setTravelers(initialTravelers);
     }
-  }, [flightOffer]);
+  }, [flightOffer, visible]);
 
-  const validateTravelerInfo = () => {
-    const newErrors: {[key: string]: string} = {};
-    
-    travelers.forEach((traveler, index) => {
-      if (!traveler.name.firstName) {
-        newErrors[`traveler-${index}-firstName`] = 'First name is required';
-      }
-      if (!traveler.name.lastName) {
-        newErrors[`traveler-${index}-lastName`] = 'Last name is required';
-      }
-      if (!traveler.dateOfBirth) {
-        newErrors[`traveler-${index}-dob`] = 'Date of birth is required';
-      }
-    });
-
-    if (!contactEmail) {
-      newErrors['contactEmail'] = 'Contact email is required';
-    }
-    if (!phoneNumber) {
-      newErrors['phoneNumber'] = 'Phone number is required';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  const isValidDate = (dateString: string) => {
+    const pattern = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
+    return pattern.test(dateString);
   };
 
-  const handleTravelerChange = (index: number, field: string, value: string) => {
-    const updatedTravelers = [...travelers];
-    const fieldPath = field.split('.');
-    
-    if (fieldPath[0] === 'name') {
-      updatedTravelers[index].name = { 
-        ...updatedTravelers[index].name, 
-        [fieldPath[1]]: value 
+  const saveBookingToFirestore = async (bookingData: FlightOrder, userId: string) => {
+    try {
+      const bookingRef = doc(db, 'bookings', bookingData.id);
+      await setDoc(bookingRef, {
+        ...bookingData,
+        userId,
+        createdAt: new Date().toISOString(),
+        status: 'confirmed'
+      });
+      console.log('Booking saved to Firestore');
+    } catch (error) {
+      console.error('Error saving booking to Firestore:', error);
+      throw error;
+    }
+  };
+
+  const sendConfirmationPDF = async (email: string, bookingReference: string, order: FlightOrder): Promise<IPDFData> => {
+    try {
+      if (!flightOffer?.itineraries?.[0]?.segments?.[0]) {
+        throw new Error('Invalid flight data');
+      }
+
+      // Airline code to name mapping
+      const carrierNameMap: Record<string, string> = {
+        PC: 'Pegasus Airlines',
+        VF: 'Vueling Airlines',
+        TK: 'Turkish Airlines',
+        // Add more mappings as needed
       };
-    } else if (fieldPath[0] === 'contact') {
-      updatedTravelers[index].contact = { 
-        ...updatedTravelers[index].contact, 
-        [fieldPath[1]]: value 
+
+      // Helper to get cabin and booking class from fareDetailsBySegment
+      const getSegmentDetails = (segmentId: string) => {
+        for (const pricing of flightOffer.travelerPricings) {
+          const detail = pricing.fareDetailsBySegment.find(d => d.segmentId === segmentId);
+          if (detail) {
+            return {
+              cabin: detail.cabin,
+              bookingClass: detail.class
+            };
+          }
+        }
+        return { cabin: 'ECONOMY', bookingClass: 'Y' }; // Fallback values
       };
-    } else {
-      (updatedTravelers[index] as any)[field] = value;
+
+      // Build complete flights data
+      const flightData = flightOffer.itineraries.map(itinerary => ({
+        itineraryType: itinerary.segments.length > 1 ? 'RETURN' : 'ONEWAY',
+        segments: itinerary.segments.map(segment => {
+          const { cabin, bookingClass } = getSegmentDetails(segment.id);
+          return {
+            departure: {
+              iataCode: segment.departure.iataCode,
+              time: segment.departure.at
+            },
+            arrival: {
+              iataCode: segment.arrival.iataCode,
+              time: segment.arrival.at
+            },
+            airline: {
+              code: segment.carrierCode,
+              name: carrierNameMap[segment.carrierCode] || 'Unknown Airline'
+            },
+            flightNumber: `${segment.carrierCode}${segment.number}`,
+            duration: segment.duration,
+            cabin,
+            bookingClass,
+            aircraft: segment.aircraft?.code
+          };
+        })
+      }));
+
+      const pdfData: IPDFData = {
+        bookingReference,
+        email,
+        flights: flightData,
+        passengers: travelers.map(t => ({
+          firstName: t.name.firstName,
+          lastName: t.name.lastName,
+          dateOfBirth: t.dateOfBirth,
+          documents: t.documents.map(d => ({
+            type: d.documentType,
+            number: d.number,
+            expiry: d.expiryDate
+          })),
+          contact: {
+            email: t.contact.emailAddress,
+            phone: t.contact.phones[0]
+              ? `+${t.contact.phones[0].countryCallingCode} ${t.contact.phones[0].number}`
+              : undefined
+          }
+        })),
+        price: {
+          total: flightOffer.price.total,
+          currency: flightOffer.price.currency,
+          taxes: flightOffer.price.taxes?.map(t => ({
+            code: t.code || 'TAX',
+            amount: t.amount
+          })) || [],
+          fees: flightOffer.price.fees?.map(f => ({
+            type: f.type,
+            amount: f.amount
+          })) || []
+        },
+        payment: {
+          id: order.id,
+          status: "confirmed",
+          amount: parseFloat(flightOffer.price.total),
+          currency: flightOffer.price.currency,
+          method: "credit_card",
+          processedAt: new Date().toISOString()
+        },
+        contactDetails: {
+          agency: {
+            name: "UBOOR TRAVEL",
+            email: "support@uboor.com",
+            phone: "+90 548 827 0084"
+          },
+          customer: {
+            name: `${travelers[0].name.firstName} ${travelers[0].name.lastName}`,
+            email: travelers[0].contact.emailAddress,
+            phone: travelers[0].contact.phones[0]
+              ? `+${travelers[0].contact.phones[0].countryCallingCode} ${travelers[0].contact.phones[0].number}`
+              : '',
+            address: " LODOS St, Girne, CY 99300"
+          }
+        },
+        metadata: {
+          issuedBy: "UBOOR Booking System",
+          issueDate: new Date().toISOString(),
+          termsLink: "https://uboor.com/terms"
+        }
+      };
+
+      const response = await fetch(`${BASE_URL}/api/pdf/sent-flight-ticket`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await auth.currentUser?.getIdToken()}`,
+        },
+        body: JSON.stringify(pdfData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to send ticket');
+      }
+
+      return pdfData;
+    } catch (error) {
+      console.error('Ticket sending error:', error);
+      throw error;
     }
-    
-    setTravelers(updatedTravelers);
   };
 
-  const handleSubmitTravelerInfo = () => {
-    if (validateTravelerInfo()) {
-      setCurrentStep('confirmation');
-    }
-  };
-
-  const handleConfirmBooking = async () => {
+  const handleConfirmBooking = useCallback(async () => {
     setLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const validationErrors: Record<string, string> = {};
       
-      const mockOrder: FlightOrder = {
-        id: `ORD-${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
-        associatedRecords: [{
-          reference: `REF-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-          creationDate: new Date().toISOString()
-        }],
-        travelers: travelers.map(t => ({
-          ...t,
-          contact: {
-            emailAddress: contactEmail,
-            phones: [{
-              deviceType: 'MOBILE',
-              countryCallingCode: '1',
-              number: phoneNumber
-            }]
+      travelers.forEach((traveler, tIndex) => {
+        if (!traveler.name.firstName) validationErrors[`traveler${tIndex}_firstName`] = `Traveler ${tIndex + 1}: First name required`;
+        if (!traveler.name.lastName) validationErrors[`traveler${tIndex}_lastName`] = `Traveler ${tIndex + 1}: Last name required`;
+        if (!traveler.dateOfBirth) validationErrors[`traveler${tIndex}_dob`] = `Traveler ${tIndex + 1}: Birth date required`;
+        if (!traveler.nationality) validationErrors[`traveler${tIndex}_nationality`] = `Traveler ${tIndex + 1}: Nationality required`;
+        
+        traveler.documents.forEach((doc, dIndex) => {
+          if (!doc.number) validationErrors[`traveler${tIndex}_doc${dIndex}_number`] = `Traveler ${tIndex + 1} Doc ${dIndex + 1}: Number required`;
+          if (!doc.expiryDate || !isValidDate(doc.expiryDate)) {
+            validationErrors[`traveler${tIndex}_doc${dIndex}_expiry`] = `Traveler ${tIndex + 1} Doc ${dIndex + 1}: Invalid expiry (YYYY-MM-DD)`;
           }
-        }))
-      };
-      
-      setBookingResult(mockOrder);
-      onBookingComplete(mockOrder);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to complete booking. Please try again.');
+          if (!doc.issuanceCountry || doc.issuanceCountry.length !== 2) {
+            validationErrors[`traveler${tIndex}_doc${dIndex}_issueCountry`] = `Traveler ${tIndex + 1} Doc ${dIndex + 1}: 2-letter country code required`;
+          }
+          if (!doc.nationality || doc.nationality.length !== 2) {
+            validationErrors[`traveler${tIndex}_doc${dIndex}_nationality`] = `Traveler ${tIndex + 1} Doc ${dIndex + 1}: 2-letter nationality required`;
+          }
+        });
+      });
+
+      if (Object.keys(validationErrors).length > 0) {
+        const errorMessages = Object.values(validationErrors).join('\n\n');
+        Alert.alert('Missing Information', errorMessages);
+        return;
+      }
+
+      setActiveModal('payment');
     } finally {
       setLoading(false);
     }
-  };
+  }, [travelers]);
 
-  const renderTravelerInfoStep = () => (
-    <ScrollView contentContainerStyle={styles.content}>
-      <Text style={styles.sectionTitle}>Traveler Information</Text>
+  const handlePaymentSuccess = useCallback(async (email: string, paymentId: string) => {
+    setLoading(true);
+    try {
+      if (!flightOffer) throw new Error('No flight selected');
+      const user = auth.currentUser;
+      if (!user) throw new Error('User not authenticated');
+
+      // Transform flight offer into the required structure
+      const flightOffers = [{
+        ...flightOffer,
+        travelerPricings: flightOffer.travelerPricings.map(pricing => ({
+          ...pricing,
+          fareDetailsBySegment: pricing.fareDetailsBySegment?.map(segment => ({
+            ...segment,
+            includedCabinBags: {
+              quantity: segment.includedCabinBags?.quantity || 1,
+              weight: segment.includedCabinBags?.weight || 0,
+              weightUnit: segment.includedCabinBags?.weightUnit || 'KG'
+            }
+          }))
+        }))
+      }];
+
+      // Transform travelers into the required structure
+      const bookingTravelers = travelers.map(traveler => ({
+        ...traveler,
+        documents: traveler.documents.map(doc => ({
+          ...doc,
+          issuanceCountry: doc.issuanceCountry.toUpperCase(),
+          validityCountry: doc.validityCountry.toUpperCase(),
+          nationality: doc.nationality.toUpperCase(),
+          birthPlace: doc.birthPlace || 'Unknown',
+          issuanceLocation: doc.issuanceLocation || 'Unknown'
+        }))
+      }));
+
+      // Construct the complete booking request
+      const bookingRequest = {
+        data: {
+          type: "flight-order",
+          flightOffers,
+          travelers: bookingTravelers,
+          remarks: {
+            general: [{
+              subType: "GENERAL_MISCELLANEOUS", 
+              text: "Mobile app booking"
+            }]
+          },
+          ticketingAgreement: {
+            option: "DELAY_TO_CANCEL",
+            delay: "6D"
+          },
+          contacts: [{
+            addresseeName: {
+              firstName: "UBOOR",
+              lastName: "SUPPORT"
+            },
+            companyName: "UBOOR TRAVEL",
+            purpose: "STANDARD",
+            emailAddress: "support@uboor.com",
+            phones: [{
+              deviceType: "MOBILE",
+              countryCallingCode: "90",
+              number: "5488270084"
+            }],
+            address: {
+              lines: ["Main Street 123"],
+              postalCode: "34000",
+              cityName: "Istanbul",
+              countryCode: "TR"
+            }
+          }],
+          metadata: {
+            paymentId,
+            customerEmail: email
+          }
+        }
+      };
+
+      const response = await fetch(`${BASE_URL}/api/flights/book`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await user.getIdToken()}`,
+        },
+        body: JSON.stringify(bookingRequest)
+      });
+
+      const responseData = await response.json();
       
-      {travelers.map((traveler, index) => (
-        <View key={index} style={styles.travelerForm}>
-          <Text style={styles.travelerType}>
-            {flightOffer.travelerPricings[index].travelerType === 'ADULT' ? 'Adult' : 
-             flightOffer.travelerPricings[index].travelerType === 'CHILD' ? 'Child' : 'Infant'}
+      if (!response.ok) {
+        throw new Error(responseData.error?.message || 'Booking failed. Please try again.');
+      }
+
+      // Save booking to Firestore
+      await saveBookingToFirestore(responseData.data, user.uid);
+
+      // Send confirmation PDF
+      const bookingReference = responseData.data.associatedRecords[0]?.reference || responseData.data.id;
+      await sendConfirmationPDF(email, bookingReference, responseData.data);
+
+      setBookingResult(responseData.data);
+      onBookingComplete(responseData.data);
+      setActiveModal(null);
+    } catch (error: any) {
+      Alert.alert(
+        'Booking Error',
+        error.message || 'Failed to complete booking. Please contact support.',
+        [
+          { 
+            text: 'Contact Support', 
+            onPress: () => Linking.openURL('mailto:support@uboor.com') 
+          },
+          { text: 'OK' }
+        ]
+      );
+      console.error('Booking error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [flightOffer, travelers, onBookingComplete]);
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: visible ? 1 : 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [visible, fadeAnim]);
+
+  const renderContent = useMemo(() => {
+    if (bookingResult) {
+      return (
+        <View style={styles.successContainer}>
+          <MaterialIcons name="check-circle" size={80} color="#4CAF50" />
+          <Text style={[styles.successTitle, { color: textColor }]}>
+            Booking Confirmed!
           </Text>
-
-          <TextInput
-            style={[styles.input, errors[`traveler-${index}-firstName`] && styles.inputError]}
-            placeholder="First Name"
-            value={traveler.name.firstName}
-            onChangeText={(text) => handleTravelerChange(index, 'name.firstName', text)}
-          />
-          {errors[`traveler-${index}-firstName`] && (
-            <Text style={styles.errorText}>{errors[`traveler-${index}-firstName`]}</Text>
-          )}
-
-          <TextInput
-            style={[styles.input, errors[`traveler-${index}-lastName`] && styles.inputError]}
-            placeholder="Last Name"
-            value={traveler.name.lastName}
-            onChangeText={(text) => handleTravelerChange(index, 'name.lastName', text)}
-          />
-          {errors[`traveler-${index}-lastName`] && (
-            <Text style={styles.errorText}>{errors[`traveler-${index}-lastName`]}</Text>
-          )}
-
-          <TextInput
-            style={[styles.input, errors[`traveler-${index}-dob`] && styles.inputError]}
-            placeholder="Date of Birth (YYYY-MM-DD)"
-            value={traveler.dateOfBirth}
-            onChangeText={(text) => handleTravelerChange(index, 'dateOfBirth', text)}
-          />
-          {errors[`traveler-${index}-dob`] && (
-            <Text style={styles.errorText}>{errors[`traveler-${index}-dob`]}</Text>
-          )}
-
-          <Picker
-            selectedValue={traveler.gender}
-            onValueChange={(value) => handleTravelerChange(index, 'gender', value)}
-            style={styles.picker}
+          <Text style={[styles.successText, { color: textColor }]}>
+            Reference: {bookingResult.bookingReference || bookingResult.id}
+          </Text>
+          <Text style={[styles.successText, { color: textColor }]}>
+            A confirmation has been sent to your email
+          </Text>
+          <TouchableOpacity
+            style={[styles.primaryButton, { backgroundColor: highlightColor }]}
+            onPress={onClose}
           >
-            <Picker.Item label="Male" value="MALE" />
-            <Picker.Item label="Female" value="FEMALE" />
-          </Picker>
-        </View>
-      ))}
-
-      <Text style={styles.sectionTitle}>Contact Information</Text>
-      <View style={styles.contactForm}>
-        <TextInput
-          style={[styles.input, errors.contactEmail && styles.inputError]}
-          placeholder="Email Address"
-          value={contactEmail}
-          onChangeText={setContactEmail}
-          keyboardType="email-address"
-        />
-        {errors.contactEmail && <Text style={styles.errorText}>{errors.contactEmail}</Text>}
-
-        <TextInput
-          style={[styles.input, errors.phoneNumber && styles.inputError]}
-          placeholder="Phone Number"
-          value={phoneNumber}
-          onChangeText={setPhoneNumber}
-          keyboardType="phone-pad"
-        />
-        {errors.phoneNumber && <Text style={styles.errorText}>{errors.phoneNumber}</Text>}
-      </View>
-
-      <TouchableOpacity
-        style={styles.primaryButton}
-        onPress={handleSubmitTravelerInfo}
-      >
-        <Text style={styles.primaryButtonText}>Continue to Payment</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
-
-  const renderConfirmationStep = () => (
-    <ScrollView contentContainerStyle={styles.content}>
-      <Text style={styles.sectionTitle}>Flight Details</Text>
-      <View style={styles.flightDetails}>
-        {flightOffer.itineraries.map((itinerary, i) => (
-          <View key={i} style={styles.itinerary}>
-            <Text style={styles.itineraryTitle}>
-              {i === 0 ? 'Outbound Flight' : 'Return Flight'}
-            </Text>
-            {itinerary.segments.map((segment, j) => (
-              <View key={j} style={styles.segment}>
-                <Text style={styles.segmentText}>
-                  {segment.departure.iataCode} → {segment.arrival.iataCode}
-                </Text>
-                <Text style={styles.segmentText}>
-                  Departure: {new Date(segment.departure.at).toLocaleString()}
-                </Text>
-              </View>
-            ))}
-          </View>
-        ))}
-      </View>
-
-      <Text style={styles.sectionTitle}>Traveler Information</Text>
-      {travelers.map((traveler, index) => (
-        <View key={index} style={styles.travelerSummary}>
-          <Text style={styles.travelerName}>
-            {traveler.name.firstName} {traveler.name.lastName}
-          </Text>
-          <Text>Date of Birth: {traveler.dateOfBirth}</Text>
-          <Text>Gender: {traveler.gender}</Text>
-        </View>
-      ))}
-
-      <View style={styles.priceSummary}>
-        <Text style={styles.priceLabel}>Total Price:</Text>
-        <Text style={styles.priceValue}>
-          {flightOffer.price.total} {flightOffer.price.currency}
-        </Text>
-      </View>
-
-      <TouchableOpacity
-        style={styles.primaryButton}
-        onPress={handleConfirmBooking}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.primaryButtonText}>Confirm Booking</Text>
-        )}
-      </TouchableOpacity>
-    </ScrollView>
-  );
-
-  const renderBookingComplete = () => (
-    <View style={styles.completeContainer}>
-      <MaterialIcons name="check-circle" size={64} color="#4CAF50" />
-      <Text style={styles.completeTitle}>Booking Confirmed!</Text>
-      <Text style={styles.bookingId}>Booking ID: {bookingResult?.id}</Text>
-      {bookingResult?.associatedRecords?.map((record, i) => (
-        <Text key={i} style={styles.bookingRef}>
-          Reference: {record.reference}
-        </Text>
-      ))}
-      <TouchableOpacity
-        style={styles.primaryButton}
-        onPress={onClose}
-      >
-        <Text style={styles.primaryButtonText}>Done</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  return (
-    <Modal visible={visible} animationType="slide">
-      <View style={styles.container}>
-        <View style={styles.header}>
-          {currentStep === 'confirmation' && !bookingResult ? (
-            <TouchableOpacity onPress={() => setCurrentStep('travelerInfo')}>
-              <MaterialIcons name="arrow-back" size={24} color="#0066cc" />
-            </TouchableOpacity>
-          ) : (
-            <View style={{ width: 24 }} />
-          )}
-          <Text style={styles.headerTitle}>
-            {bookingResult ? 'Booking Confirmation' : 
-             currentStep === 'travelerInfo' ? 'Traveler Information' : 'Confirm Booking'}
-          </Text>
-          <TouchableOpacity onPress={onClose}>
-            <MaterialIcons name="close" size={24} color="#0066cc" />
+            <Text style={styles.primaryButtonText}>Done</Text>
           </TouchableOpacity>
         </View>
+      );
+    }
 
-        {bookingResult ? renderBookingComplete() : 
-         currentStep === 'travelerInfo' ? renderTravelerInfoStep() : renderConfirmationStep()}
+    return currentStep === 'main' ? (
+      <View style={styles.content}>
+        <Text style={[styles.sectionTitle, { color: textColor }]}>
+          Travelers ({travelers.length})
+        </Text>
+        <FlatList
+          data={travelers}
+          keyExtractor={item => item.id}
+          renderItem={({ item, index }) => (
+            <TravelerCard
+              traveler={item}
+              index={index}
+              onPress={() => {
+                setCurrentTravelerIndex(index);
+                setActiveModal('traveler');
+              }}
+              onDocumentsPress={() => {
+                setCurrentTravelerIndex(index);
+                setActiveModal('document');
+              }}
+            />
+          )}
+          ListFooterComponent={
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                { backgroundColor: highlightColor, marginTop: 16 }
+              ]}
+              onPress={() => setCurrentStep('confirmation')}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Review Booking</Text>
+              )}
+            </TouchableOpacity>
+          }
+        />
+      </View>
+    ) : (
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={[styles.sectionTitle, { color: textColor }]}>Booking Summary</Text>
+        
+        <View style={[styles.card, { backgroundColor: surfaceColor }]}>
+          <Text style={[styles.subTitle, { color: highlightColor }]}>Flight Details</Text>
+          {flightOffer && (
+            <>
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: textColor }]}>Route:</Text>
+                <Text style={[styles.detailValue, { color: textColor }]}>
+                  {flightOffer.itineraries[0].segments[0].departure.iataCode}  
+                  {flightOffer.itineraries[flightOffer.itineraries.length - 1]
+                    .segments[flightOffer.itineraries[0].segments.length - 1].arrival.iataCode}
+                </Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: textColor }]}>Departure:</Text>
+                <Text style={[styles.detailValue, { color: textColor }]}>
+                  {new Date(flightOffer.itineraries[0].segments[0].departure.at).toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: textColor }]}>Return:</Text>
+                <Text style={[styles.detailValue, { color: textColor }]}>
+                  {new Date(flightOffer.itineraries[1]?.segments[0]?.departure.at || '').toLocaleString() || 'One-way'}
+                </Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: textColor }]}>Total Price:</Text>
+                <Text style={[styles.detailValue, { color: textColor }]}>
+                  {flightOffer.price.total} {flightOffer.price.currency}
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
+
+        <View style={[styles.card, { backgroundColor: surfaceColor }]}>
+          <Text style={[styles.subTitle, { color: highlightColor }]}>Travelers</Text>
+          {travelers.map((traveler, index) => (
+            <View key={index} style={styles.travelerItem}>
+              <Text style={[styles.travelerName, { color: textColor }]}>
+                {traveler.name.firstName} {traveler.name.lastName}
+              </Text>
+              <Text style={[styles.travelerInfo, { color: secondaryColor }]}>
+                {traveler.travelerType} • {traveler.gender === 'MALE' ? 'Male' : 'Female'} • {traveler.nationality}
+              </Text>
+              <Text style={[styles.travelerInfo, { color: secondaryColor }]}>
+                Passport: {traveler.documents[0]?.number || 'Not provided'}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[styles.secondaryButton, { borderColor: highlightColor }]}
+            onPress={() => setCurrentStep('main')}
+            disabled={loading}
+          >
+            <Text style={[styles.buttonText, { color: highlightColor }]}>Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.primaryButton, { backgroundColor: highlightColor }]}
+            onPress={handleConfirmBooking}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryButtonText}>Confirm & Pay</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }, [bookingResult, currentStep, travelers, theme, loading]);
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <View style={[styles.container, { backgroundColor }]}>
+        {loading && (
+          <View style={styles.loadingOverlay}>
+            <View style={[styles.loadingBox, { backgroundColor: surfaceColor }]}>
+              <ActivityIndicator size="large" color={highlightColor} />
+              <Text style={[styles.loadingText, { color: textColor }]}>Processing...</Text>
+            </View>
+          </View>
+        )}
+
+        <View style={[styles.header, { borderBottomColor: borderColor }]}>
+          <MaterialIcons
+            name={currentStep === 'main' ? 'close' : 'arrow-back'}
+            size={24}
+            color={highlightColor}
+            onPress={currentStep === 'main' ? onClose : () => setCurrentStep('main')}
+            disabled={loading}
+          />
+          <Text style={[styles.title, { color: textColor }]}>
+            {bookingResult ? 'Booking Complete' : 'Complete Booking'}
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
+          {renderContent}
+        </Animated.View>
+
+        <BottomSheet visible={activeModal === 'traveler'} onClose={() => setActiveModal(null)}>
+          <TravelerModal
+            visible={activeModal === 'traveler'} 
+            traveler={travelers[currentTravelerIndex]}
+            index={currentTravelerIndex}
+            onSave={(updatedTraveler) => {
+              const newTravelers = [...travelers];
+              newTravelers[currentTravelerIndex] = updatedTraveler;
+              setTravelers(newTravelers);
+              setActiveModal(null);
+            }}
+            onClose={() => setActiveModal(null)}
+          />
+        </BottomSheet>
+
+        <BottomSheet visible={activeModal === 'document'} onClose={() => setActiveModal(null)}>
+          <DocumentModal
+            traveler={travelers[currentTravelerIndex]}
+            visible={activeModal === 'document'} 
+            index={currentTravelerIndex}
+            onSave={(docs) => {
+              const newTravelers = [...travelers];
+              newTravelers[currentTravelerIndex].documents = docs;
+              setTravelers(newTravelers);
+              setActiveModal(null);
+            }}
+            onClose={() => setActiveModal(null)}
+          />
+        </BottomSheet>
+
+        <BottomSheet visible={activeModal === 'payment'} onClose={() => setActiveModal(null)}>
+          <PaymentModal
+            amount={flightOffer?.price.total || '0'}
+            currency={flightOffer?.price.currency || 'USD'}
+            onPaymentSuccess={handlePaymentSuccess}
+            onClose={() => setActiveModal(null)}
+            visible={activeModal === 'payment'}
+          />
+        </BottomSheet>
       </View>
     </Modal>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: 45,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    paddingTop: 70,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
   },
-  headerTitle: {
-    fontSize: 20,
+  title: {
+    fontSize: 18,
     fontWeight: '600',
-    textAlign: 'center',
     flex: 1,
+    textAlign: 'center',
   },
   content: {
+    flexGrow: 1,
     padding: 16,
-    paddingBottom: 24,
+  },
+  card: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 16,
-    color: '#333',
   },
-  travelerForm: {
-    marginBottom: 24,
-  },
-  travelerType: {
+  subTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 8,
-    color: '#444',
+    marginBottom: 12,
   },
-  contactForm: {
-    marginBottom: 24,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  travelerItem: {
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  travelerName: {
     fontSize: 16,
+    fontWeight: '500',
   },
-  inputError: {
-    borderColor: 'red',
+  travelerInfo: {
+    fontSize: 14,
+    marginTop: 4,
   },
-  errorText: {
-    color: 'red',
-    fontSize: 12,
-    marginBottom: 8,
-  },
-  picker: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    marginBottom: 8,
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    gap: 8,
   },
   primaryButton: {
-    backgroundColor: '#0066cc',
-    padding: 16,
+    flex: 1,
     borderRadius: 8,
+    padding: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryButton: {
+    flex: 1,
+    borderRadius: 8,
+    padding: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   primaryButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
-  flightDetails: {
-    marginBottom: 24,
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
   },
-  itinerary: {
-    marginBottom: 16,
+  loadingBox: {
+    padding: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    minWidth: 200,
   },
-  itineraryTitle: {
+  loadingText: {
+    marginTop: 16,
     fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#444',
   },
-  segment: {
-    marginBottom: 12,
-    paddingLeft: 8,
-    borderLeftWidth: 2,
-    borderLeftColor: '#0066cc',
-  },
-  segmentText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  travelerSummary: {
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  travelerName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  priceSummary: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 24,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#eee',
-  },
-  priceLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  priceValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0066cc',
-  },
-  completeContainer: {
+  successContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
-  completeTitle: {
+  successTitle: {
     fontSize: 24,
     fontWeight: '600',
-    marginVertical: 16,
-    color: '#333',
+    marginVertical: 24,
   },
-  bookingId: {
-    fontSize: 18,
-    fontWeight: '500',
-    marginBottom: 8,
-    color: '#444',
-  },
-  bookingRef: {
+  successText: {
+    marginBottom: 16,
     fontSize: 16,
-    marginBottom: 4,
-    color: '#666',
+    textAlign: 'center',
   },
 });
 

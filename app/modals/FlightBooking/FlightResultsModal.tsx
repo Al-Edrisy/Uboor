@@ -961,6 +961,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     marginBottom: 8,
+
   },
   segmentInfoRow: {
     flexDirection: 'row',

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Platform, StyleSheet, Alert, KeyboardAvoidingView, ActivityIndicator, Animated, } from 'react-native';
 import { sendPasswordResetEmail } from 'firebase/auth';
-import auth from '../../lib/firebase';
+import {auth} from '../../lib/firebase';
 import { Text, View, TextInput, Button } from '@/components/Themed';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,6 +41,7 @@ export default function ForgotPasswordModal() {
       setLoading(true);
       await sendPasswordResetEmail(auth, email);
       Alert.alert('Success', 'Check your email for a password reset link.');
+      router.replace('/'); 
       router.push('/modals/auth/SignInModal');
     } catch (error) {
       Alert.alert('Error', error instanceof Error ? error.message : 'An unknown error occurred');

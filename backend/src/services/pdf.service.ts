@@ -1,305 +1,455 @@
-// backend/src/services/pdf.service.ts
-import { createWriteStream, mkdirSync } from 'fs';
-import { join } from 'path';
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
-import { IPDFData } from '../interfaces/pdf.interface';
-import logger from '../utils/logger';
 import fontkit from '@pdf-lib/fontkit';
-import fs from 'fs';
+import { IPDFData } from '../interfaces/pdf.interface';
+import { format, parseISO } from 'date-fns';
 
 export class PDFService {
-  private async loadFont(pdfDoc: PDFDocument) {
+  private readonly PAGE_WIDTH = 595;
+  private readonly PAGE_HEIGHT = 842;
+  private readonly MARGIN = 50;
+  private readonly COLUMN_WIDTH = (this.PAGE_WIDTH - (this.MARGIN * 2)) / 2;
+
+  private async createDocument() {
+    const pdfDoc = await PDFDocument.create();
+    pdfDoc.registerFontkit(fontkit);
+    return pdfDoc;
+  }
+
+  private async loadFonts(pdfDoc: PDFDocument) {
     try {
-      pdfDoc.registerFontkit(fontkit);
-      
-      // For production, use a proper font file
-      const fontBytes = fs.readFileSync(join(__dirname, './../../assets/fonts/Roboto/Roboto-Regular.ttf'));
-      return await pdfDoc.embedFont(fontBytes);
+      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      return { bold: boldFont, regular: regularFont };
     } catch (error) {
-      logger.warn('Failed to load custom font, using standard fonts', error);
-      return await pdfDoc.embedFont(StandardFonts.Helvetica);
+      throw new Error('Font loading failed');
     }
   }
 
-  private formatDate(dateString: string): string {
+  private formatDate(dateString: string, formatString: string = 'PPpp') {
     try {
-      const date = new Date(dateString);
-      return date.toLocaleString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch (error) {
+      return format(parseISO(dateString), formatString);
+    } catch {
       return dateString;
     }
   }
 
-  private async addHeader(pdfDoc: PDFDocument, page: any, width: number, title: string) {
-    const font = await this.loadFont(pdfDoc);
-    const fontSize = 24;
+  private formatDuration(duration: string): string {
+    const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
+    if (!match) return duration;
     
-    page.drawText(title, {
-      x: 50,
-      y: page.getHeight() - 50,
-      size: fontSize,
-      font,
-      color: rgb(0, 0.2, 0.4),
-    });
+    const hours = match[1] ? `${match[1]}h ` : '';
+    const minutes = match[2] ? `${match[2]}m` : '';
+    return `${hours}${minutes}`.trim() || duration;
+  }
 
+  private drawSectionHeader(page: any, text: string, y: number, fonts: any) {
+    page.drawText(text, {
+      x: this.MARGIN,
+      y,
+      size: 18,
+      font: fonts.bold,
+      color: rgb(0.1, 0.1, 0.1)
+    });
+    
     page.drawLine({
-      start: { x: 50, y: page.getHeight() - 70 },
-      end: { x: width - 50, y: page.getHeight() - 70 },
-      thickness: 2,
-      color: rgb(0, 0.2, 0.4),
+      start: { x: this.MARGIN, y: y - 5 },
+      end: { x: this.PAGE_WIDTH - this.MARGIN, y: y - 5 },
+      thickness: 1,
+      color: rgb(0.7, 0.7, 0.7)
     });
-  }
-
-  private async addFlightDetails(pdfDoc: PDFDocument, page: any, data: IPDFData, yPosition: number, width: number) {
-    const font = await this.loadFont(pdfDoc);
-    const fontSize = 14;
-    const smallFontSize = 10;
-    const x = 50;
-    let y = yPosition;
-
-    // Flight Information Section
-    page.drawText('Flight Details', {
-      x,
-      y,
-      size: fontSize + 2,
-      font,
-      color: rgb(0, 0.2, 0.4),
-    });
-    y -= 25;
-
-    // Flight Route
-    page.drawText(`${data.flight.departureCity} -> ${data.flight.arrivalCity}`, {
-      x,
-      y,
-      size: fontSize,
-      font,
-    });
-    y -= 20;
-
-    // Flight Number and Date
-    page.drawText(`Flight Number: ${data.flight.flightNumber}`, { x, y, size: smallFontSize, font });
-    page.drawText(`Departure: ${this.formatDate(data.flight.departureTime)}`, { 
-      x: width / 2, 
-      y, 
-      size: smallFontSize, 
-      font 
-    });
-    y -= 15;
-
-    // Duration
-    page.drawText(`Duration: ${data.flight.duration}`, { x, y, size: smallFontSize, font });
-    y -= 30;
-
-    return y;
-  }
-
-  private async addPassengerDetails(pdfDoc: PDFDocument, page: any, data: IPDFData, yPosition: number) {
-    const font = await this.loadFont(pdfDoc);
-    const fontSize = 14;
-    const smallFontSize = 10;
-    const x = 50;
-    let y = yPosition;
-
-    // Passenger Information Section
-    page.drawText('Passenger Information', {
-      x,
-      y,
-      size: fontSize + 2,
-      font,
-      color: rgb(0, 0.2, 0.4),
-    });
-    y -= 25;
-
-    data.passengers.forEach((passenger, index) => {
-      page.drawText(`${index + 1}. ${passenger.firstName} ${passenger.lastName}`, { x, y, size: fontSize, font });
-      if (passenger.passportNumber) {
-        page.drawText(`Passport: ${passenger.passportNumber}`, { x: x + 150, y, size: smallFontSize, font });
-      }
-      y -= 20;
-    });
-
-    y -= 10;
-    return y;
-  }
-
-  private async addPaymentDetails(pdfDoc: PDFDocument, page: any, data: IPDFData, yPosition: number, width: number) {
-    const font = await this.loadFont(pdfDoc);
-    const fontSize = 14;
-    const smallFontSize = 10;
-    const x = 50;
-    let y = yPosition;
-
-    // Payment Information Section
-    page.drawText('Payment Details', {
-      x,
-      y,
-      size: fontSize + 2,
-      font,
-      color: rgb(0, 0.2, 0.4),
-    });
-    y -= 25;
-
-    page.drawText(`Amount: ${data.payment.amount} ${data.payment.currency}`, { x, y, size: fontSize, font });
-    y -= 20;
-
-    page.drawText(`Method: ${data.payment.method}`, { x, y, size: smallFontSize, font });
-    page.drawText(`Status: ${data.payment.status}`, { x: width / 2, y, size: smallFontSize, font });
-    y -= 15;
-
-    page.drawText(`Transaction ID: ${data.payment.transactionId}`, { x, y, size: smallFontSize, font });
-    y -= 30;
-
-    return y;
-  }
-
-  private async addFooter(pdfDoc: PDFDocument, page: any, width: number, bookingReference: string) {
-    const font = await this.loadFont(pdfDoc);
-    const fontSize = 10;
     
-    page.drawText(`Booking Reference: ${bookingReference}`, {
-      x: 50,
-      y: 50,
-      size: fontSize,
-      font,
+    return y - 30;
+  }
+
+  private async addFlightItinerary(pdfDoc: PDFDocument, page: any, data: IPDFData, fonts: any, startY: number) {
+    let y = startY;
+    
+    for (const itinerary of data.flights) {
+      const result = await this.checkPageSpace(pdfDoc, page, y, 100, data.metadata, fonts);
+      page = result.page;
+      y = result.y;
+
+      y = this.drawSectionHeader(page, `${itinerary.itineraryType} JOURNEY`, y, fonts);
+      
+      for (const segment of itinerary.segments) {
+        const departureCity = segment.departure.cityName || segment.departure.iataCode;
+        const arrivalCity = segment.arrival.cityName || segment.arrival.iataCode;
+        
+        page.drawText(`${departureCity} -> ${arrivalCity}`, {
+          x: this.MARGIN,
+          y,
+          size: 14,
+          font: fonts.bold,
+          color: rgb(0.1, 0.1, 0.1)
+        });
+
+        const leftCol = this.MARGIN;
+        const rightCol = this.MARGIN + this.COLUMN_WIDTH;
+        
+        page.drawText(`Flight: ${segment.airline.code} ${segment.flightNumber}`, { 
+          x: leftCol , 
+          y: y - 20, 
+          size: 11, 
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2) 
+        });
+        
+        page.drawText(`Departs: ${this.formatDate(segment.departure.time, 'MMM dd, yyyy HH:mm')}`, { 
+          x: leftCol, 
+          y: y - 35, 
+          size: 11, 
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2) 
+        });
+        
+        page.drawText(`Duration: ${this.formatDuration(segment.duration)}`, { 
+          x: leftCol, 
+          y: y - 50, 
+          size: 11, 
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2) 
+        });
+
+        page.drawText(`Class: ${segment.cabin} (${segment.bookingClass})`, { 
+          x: rightCol, 
+          y: y - 20, 
+          size: 11, 
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2) 
+        });
+        
+        page.drawText(`Arrives: ${this.formatDate(segment.arrival.time, 'MMM dd, yyyy HH:mm')}`, { 
+          x: rightCol, 
+          y: y - 35, 
+          size: 11, 
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2) 
+        });
+        
+        page.drawText(`Aircraft: ${segment.aircraft || 'Not specified'}`, { 
+          x: rightCol, 
+          y: y - 50, 
+          size: 11, 
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2) 
+        });
+
+        y -= 70;
+      }
+    }
+
+    return { page, y };
+  }
+
+  private async checkPageSpace(pdfDoc: PDFDocument, page: any, y: number, requiredSpace: number, metadata: IPDFData['metadata'], fonts: any) {
+    if (y - requiredSpace < this.MARGIN) {
+      const newPage = pdfDoc.addPage([this.PAGE_WIDTH, this.PAGE_HEIGHT]);
+      this.addWatermark(newPage, fonts);
+      return { 
+        page: newPage, 
+        y: this.PAGE_HEIGHT - this.MARGIN - 50 
+      };
+    }
+    return { page, y };
+  }
+
+  private async addPassengerDetails(pdfDoc: PDFDocument, page: any, data: IPDFData, fonts: any, startY: number) {
+    let y = startY;
+    
+    const result = await this.checkPageSpace(pdfDoc, page, y, 100, data.metadata, fonts);
+    page = result.page;
+    y = result.y;
+
+    y = this.drawSectionHeader(page, 'PASSENGER DETAILS', y, fonts);
+
+    for (const [index, passenger] of data.passengers.entries()) {
+      const spaceNeeded = 30 + (Math.max(3, passenger.documents?.length || 0) * 15);
+      const check = await this.checkPageSpace(pdfDoc, page, y, spaceNeeded, data.metadata, fonts);
+      page = check.page;
+      y = check.y;
+
+      page.drawText(`${index + 1}. ${passenger.firstName} ${passenger.lastName}`, {
+        x: this.MARGIN,
+        y,
+        size: 14,
+        font: fonts.bold,
+        color: rgb(0.1, 0.1, 0.1)
+      });
+
+      const detailsLeft = [
+        `Date of Birth: ${this.formatDate(passenger.dateOfBirth, 'PP')}`,
+        `Nationality: ${passenger.nationality || 'Not specified'}`
+      ];
+
+      const detailsRight = [
+        ...(passenger.documents?.map(doc => `${doc.type}: ${doc.number}`) || []),
+        `Contact: ${passenger.contact?.email || 'No email'}${passenger.contact?.phone ? ` | ${passenger.contact.phone}` : ''}`
+      ];
+
+      detailsLeft.forEach((detail, i) => {
+        page.drawText(detail, {
+          x: this.MARGIN,
+          y: y - 20 - (i * 15),
+          size: 10,
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2)
+        });
+      });
+
+      detailsRight.forEach((detail, i) => {
+        page.drawText(detail, {
+          x: this.MARGIN + this.COLUMN_WIDTH,
+          y: y - 20 - (i * 15),
+ size: 10,
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2)
+        });
+      });
+
+      y -= 30 + (Math.max(detailsLeft.length, detailsRight.length) * 15);
+    }
+
+    return { page, y };
+  }
+
+  private async addPriceBreakdown(pdfDoc: PDFDocument, page: any, data: IPDFData, fonts: any, startY: number) {
+    let y = startY;
+    
+    const result = await this.checkPageSpace(pdfDoc, page, y, 100, data.metadata, fonts);
+    page = result.page;
+    y = result.y;
+
+    y = this.drawSectionHeader(page, 'PRICE BREAKDOWN', y, fonts);
+
+    page.drawText(`Total: ${data.price.total} ${data.price.currency}`, {
+      x: this.MARGIN,
+      y: y - 20,
+      size: 14,
+      font: fonts.bold,
+      color: rgb(0.1, 0.1, 0.1)
+    });
+    y -= 40;
+
+    if (data.price.taxes.length > 0) {
+      page.drawText('Taxes & Fees:', {
+        x: this.MARGIN,
+        y,
+        size: 12,
+        font: fonts.regular,
+        color: rgb(0.1, 0.1, 0.1)
+      });
+
+      data.price.taxes.forEach((tax, i) => {
+        page.drawText(`${tax.code}: ${tax.amount}`, {
+          x: this.MARGIN + 20,
+          y: y - 15 - (i * 15),
+          size: 11,
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2)
+        });
+      });
+      y -= 20 + (data.price.taxes.length * 15);
+    }
+
+    return { page, y };
+  }
+
+  private async addPaymentDetails(pdfDoc: PDFDocument, page: any, data: IPDFData, fonts: any, startY: number) {
+    let y = startY;
+    
+    const result = await this.checkPageSpace(pdfDoc, page, y, 100, data.metadata, fonts);
+    page = result.page;
+    y = result.y;
+
+    y = this.drawSectionHeader(page, 'PAYMENT INFORMATION', y, fonts);
+
+    const paymentDetails = [
+      `Amount Paid: ${data.payment.amount} ${data.payment.currency}`,
+      `Payment Method: ${data.payment.method || 'Credit Card'}`,
+      `Transaction ID: ${data.payment.id}`,
+      `Status: ${data.payment.status.toUpperCase()}`,
+      `Processed At: ${this.formatDate(data.payment.processedAt)}`
+    ];
+
+    paymentDetails.forEach((detail, i) => {
+      page.drawText(detail, {
+        x: this.MARGIN,
+        y: y - 20 - (i * 15),
+        size: 11,
+        font: fonts.regular,
+        color: rgb(0.2, 0.2, 0.2)
+      });
     });
 
-    page.drawText('Thank you for choosing our service!', {
-      x: 50,
-      y: 30,
-      size: fontSize,
-      font,
+    y -= 30 + (paymentDetails.length * 15);
+    return { page, y };
+  }
+
+  private async addContactInformation(pdfDoc: PDFDocument, page: any, data: IPDFData, fonts: any, startY: number) {
+    let y = startY;
+    
+    const result = await this.checkPageSpace(pdfDoc, page, y, 150, data.metadata, fonts);
+    page = result.page;
+    y = result.y;
+
+    y = this.drawSectionHeader(page, 'CONTACT INFORMATION', y, fonts);
+
+    if (data.contactDetails.agency) {
+      page.drawText(`Agency: ${data.contactDetails.agency.name}`, {
+        x: this.MARGIN,
+        y: y - 20,
+        size: 12,
+        font: fonts.bold,
+        color: rgb(0.1, 0.1, 0.1)
+      });
+
+      const agencyDetails = [
+        `Email: ${data.contactDetails.agency.email}`,
+        `Phone: ${data.contactDetails.agency.phone}`
+      ];
+
+      agencyDetails.forEach((detail, i) => {
+        page.drawText(detail, {
+          x: this.MARGIN + 20,
+          y: y - 40 - (i * 15),
+          size: 10,
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2)
+        });
+      });
+
+      y -= 70;
+    }
+
+    page.drawText('Customer:', {
+      x: this.MARGIN,
+      y: y - 20,
+      size: 12,
+      font: fonts.bold,
+      color: rgb(0.1, 0.1, 0.1)
     });
 
-    page.drawText(new Date().toLocaleDateString(), {
-      x: width - 100,
+    const customerDetails = [
+      `Name: ${data.contactDetails.customer.name}`,
+      `Email: ${data.contactDetails.customer.email}`,
+      ...(data.contactDetails.customer.phone ? [`Phone: ${data.contactDetails.customer.phone}`] : []),
+      ...(data.contactDetails.customer.address ? [`Address: ${data.contactDetails.customer.address}`] : [])
+    ];
+
+    customerDetails.forEach((detail, i) => {
+      page.drawText(detail, {
+        x: this.MARGIN + 20,
+        y: y - 40 - (i * 15),
+        size: 10,
+        font: fonts.regular,
+        color: rgb(0.2, 0.2, 0.2)
+      });
+    });
+
+    y -= 40 + (customerDetails.length * 15);
+    return { page, y };
+  }
+
+  private addFooter(page: any, metadata: IPDFData['metadata'], fonts: any) {
+    page.drawLine({
+      start: { x: this.MARGIN, y: 60 },
+      end: { x: this.PAGE_WIDTH - this.MARGIN, y: 60 },
+      thickness: 0.5,
+      color: rgb(0.7, 0.7, 0.7)
+    });
+
+    page.drawText(`Issued by: ${metadata.issuedBy} | ${this.formatDate(metadata.issueDate)}`, {
+      x: this.MARGIN,
+      y: 45,
+      size: 8,
+      font: fonts.regular,
+      color: rgb(0.5, 0.5, 0.5)
+    });
+
+    page.drawText(`Terms & Conditions: ${metadata.termsLink}`, {
+      x: this.MARGIN,
       y: 30,
-      size: fontSize,
-      font,
+      size: 8,
+      font: fonts.regular,
+      color: rgb(0.5, 0.5, 0.5)
+    });
+
+    page.drawText('CONFIDENTIAL', {
+      x: this.PAGE_WIDTH - this.MARGIN - 60,
+      y: 30,
+      size: 8,
+      font: fonts.regular,
+      color: rgb(0.5, 0.5, 0.5)
+    });
+  }
+
+  private addWatermark(page: any, fonts: any) {
+    page.drawText('CONFIRMED', {
+      x: this.PAGE_WIDTH / 2 - 100,
+      y: this.PAGE_HEIGHT / 2,
+      size: 72,
+      font: fonts.bold,
+      color: rgb(0.9, 0.9, 0.9),
+      rotate: degrees(-45),
+      opacity: 0.2
     });
   }
 
   async generateBookingPDF(data: IPDFData): Promise<Uint8Array> {
-    try {
-      const pdfDoc = await PDFDocument.create();
-      const page = pdfDoc.addPage([595, 842]); // A4 size in points (72ppi)
-      const { width, height } = page.getSize();
+    const pdfDoc = await this.createDocument();
+    let page = pdfDoc.addPage([this.PAGE_WIDTH, this.PAGE_HEIGHT]);
+    const fonts = await this.loadFonts(pdfDoc);
+    
+    this.addWatermark(page, fonts);
 
-      // Add document header
-      await this.addHeader(pdfDoc, page, width, 'Booking Confirmation');
+    // Header
+    let yPosition = this.PAGE_HEIGHT - this.MARGIN;
+    page.drawText('TRAVEL CONFIRMATION', {
+      x: this.MARGIN,
+      y: yPosition,
+      size: 26,
+      font: fonts.bold,
+      color: rgb(0, 0.2, 0.4)
+    });
 
-      // Add booking reference
-      let currentY = height - 100;
-      page.drawText(`Booking Reference: ${data.bookingReference}`, {
-        x: 50,
-        y: currentY,
-        size: 12,
-        font: await this.loadFont(pdfDoc),
-      });
-      currentY -= 30;
+    yPosition -= 25;
+    page.drawText(`Booking Reference: ${data.bookingReference}`, {
+      x: this.MARGIN,
+      y: yPosition,
+      size: 12,
+      font: fonts.regular,
+      color: rgb(0.2, 0.2, 0.2)
+    });
 
-      // Add flight details
-      currentY = await this.addFlightDetails(pdfDoc, page, data, currentY, width);
+    yPosition -= 50;
 
-      // Add passenger details
-      currentY = await this.addPassengerDetails(pdfDoc, page, data, currentY);
+    // Content sections with pagination
+    const flightResult = await this.addFlightItinerary(pdfDoc, page, data, fonts, yPosition);
+    page = flightResult.page;
+    yPosition = flightResult.y;
 
-      // Add payment details
-      currentY = await this.addPaymentDetails(pdfDoc, page, data, currentY, width);
+    const passengerResult = await this.addPassengerDetails(pdfDoc, page, data, fonts, yPosition);
+    page = passengerResult.page;
+    yPosition = passengerResult.y;
 
-      // Add terms and conditions
-      page.drawText('Terms and Conditions:', {
-        x: 50,
-        y: currentY,
-        size: 12,
-        font: await this.loadFont(pdfDoc),
-        color: rgb(0, 0.2, 0.4),
-      });
-      currentY -= 20;
+    const priceResult = await this.addPriceBreakdown(pdfDoc, page, data, fonts, yPosition);
+    page = priceResult.page;
+    yPosition = priceResult.y;
 
-      const terms = [
-        '1. Tickets are non-refundable but can be changed for a fee.',
-        '2. Check-in opens 24 hours before departure.',
-        '3. Baggage allowance may apply.',
-        '4. Government taxes and fees included.'
-      ];
+    const paymentResult = await this.addPaymentDetails(pdfDoc, page, data, fonts, yPosition);
+    page = paymentResult.page;
+    yPosition = paymentResult.y;
 
-      const font = await this.loadFont(pdfDoc);
+    const contactResult = await this.addContactInformation(pdfDoc, page, data, fonts, yPosition);
+    page = contactResult.page;
 
-      terms.forEach(term => {
-        page.drawText(term, {
-          x: 60,
-          y: currentY,
-          size: 10,
-          font,
-        });
-        currentY -= 15;
-      });
-
-      // Add footer
-      await this.addFooter(pdfDoc, page, width, data.bookingReference);
-
-      // Add watermark
-      const tempPdf = await PDFDocument.create();
-      const tempPage = tempPdf.addPage([300, 100]);
-      const watermarkFont = await this.loadFont(tempPdf);
-      tempPage.drawText('CONFIDENTIAL', {
-        x: 50,
-        y: 50,
-        size: 20,
-        font: watermarkFont,
-        color: rgb(0.75, 0.75, 0.75),
-        rotate: degrees(-45),
-      });
-
-      const embeddedPage = await pdfDoc.embedPage(tempPage);
-      const { width: embeddedWidth, height: embeddedHeight } = embeddedPage;
-
-      page.drawPage(embeddedPage, {
-        x: width / 2 - embeddedWidth / 2,
-        y: height / 2 - embeddedHeight / 2,
-        width: embeddedWidth,
-        height: embeddedHeight,
-        opacity: 0.1,
-        rotate: degrees(-45),
-      });
-
-      const pdfBytes = await pdfDoc.save();
-      return pdfBytes;
-    } catch (error) {
-      logger.error('Error generating PDF', error);
-      throw error;
+    // Add footer to all pages
+    const pages = pdfDoc.getPages();
+    for (const pg of pages) {
+      this.addFooter(pg, data.metadata, fonts);
     }
-  }
 
-  async generateAndSaveBookingPDF(data: IPDFData): Promise<{ pdfBytes: Uint8Array; filePath: string }> {
-    try {
-      const pdfBytes = await this.generateBookingPDF(data);
-      const saveDir = join(__dirname, '../../templates/pdfs');
-      mkdirSync(saveDir, { recursive: true });
-
-      const filename = `booking-${data.bookingReference}.pdf`;
-      const filePath = join(saveDir, filename);
-
-      await new Promise<void>((resolve, reject) => {
-        const stream = createWriteStream(filePath);
-        stream.write(Buffer.from(pdfBytes));
-        stream.end();
-        stream.on('finish', () => resolve());
-        stream.on('error', (error) => reject(error));
-      });
-
-      return { pdfBytes, filePath };
-    } catch (error) {
-      logger.error('Error saving PDF', error);
-      throw error;
-    }
+    return pdfDoc.save();
   }
 }
 

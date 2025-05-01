@@ -1,20 +1,20 @@
 import express from 'express';
 import { pdfController } from '../controllers/pdf.controller';
 import validate from '../middleware/validate';
-import { pdfSchema } from './../schemas/pdf.schema';
+import { pdfSchema, emailPdfSchema } from '../schemas/pdf.schema';
 
 const router = express.Router();
 
 router.post(
   '/generate',
   validate(pdfSchema),
-  pdfController.generateBookingPDF
+  (req, res, next) => pdfController.generateBookingPDF(req, res).catch(next)
 );
 
 router.post(
-  '/send-confirmation',
-  validate(pdfSchema),
-  pdfController.sendBookingConfirmation
+  '/sent-flight-ticket',
+  validate(emailPdfSchema),
+  (req, res, next) => pdfController.sendBookingConfirmation(req, res).catch(next)
 );
 
 export default router;

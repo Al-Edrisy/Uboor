@@ -8,13 +8,7 @@ import {
   FlatList,
   StyleSheet,
   Dimensions,
-  Modal,
   SafeAreaView,
-  TouchableWithoutFeedback,
-  TouchableOpacity,
-  TouchableHighlight,
-  TouchableNativeFeedback,
-  Touchable,
 } from 'react-native';
 import { FontAwesome5, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,14 +17,13 @@ import { useRouter } from 'expo-router';
 import { useTheme } from './../context/ThemeContext';
 import { useThemeColor } from '@/components/Themed';
 import { useAuth } from '../context/AuthContext';
-import AuthModal from './../modal';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.8;
 const FEATURE_CARD_WIDTH = 220;
 const SECTION_SPACING = 24;
 
-export default function HomeScreen() {
+export default function index() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const backgroundColor = useThemeColor({}, 'background');
@@ -43,9 +36,10 @@ export default function HomeScreen() {
   const paragraphColor = useThemeColor({}, 'paragraph');
   const borderColor = useThemeColor({}, 'border');
   const headlineColor = useThemeColor({}, 'headline');
+    const buttonColor = useThemeColor({}, 'button');
+    const buttonTextColor = useThemeColor({}, 'buttonText');
 
   const [selectedIcon, setSelectedIcon] = useState('hotel');
-  const [authModalVisible, setAuthModalVisible] = useState(false);
   const scaleValue = new Animated.Value(1);
   const router = useRouter();
 
@@ -218,160 +212,148 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor }]}>
-    <View style={[styles.container, { backgroundColor }]}>
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContainer}
-      >
-        
+      <View style={[styles.container, { backgroundColor }]}>
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContainer}
+        >
+          {/* Main Navigation */}
+          <View style={[styles.navContainer, { backgroundColor: surfaceColor }]}>
+            {['hotel', 'plane', 'car', 'box', 'suitcase'].map((icon) => (
+              <Pressable 
+                key={icon} 
+                onPress={() => handleIconPress(icon)}
+                style={styles.navButton}
+              >
+                <Animated.View style={[styles.navIconContainer, { 
+                  backgroundColor: selectedIcon === icon ? `${highlightColor}20` : 'transparent',
+                  transform: [{ scale: selectedIcon === icon ? scaleValue : 1 }],
+                }]}>
+                  <FontAwesome5 
+                    name={icon} 
+                    size={22} 
+                    color={selectedIcon === icon ? highlightColor : tabIconDefaultColor} 
+                  />
+                </Animated.View>
+                <Text style={[styles.navLabel, { 
+                  color: selectedIcon === icon ? highlightColor : tabIconDefaultColor,
+                }]}>
+                  {icon === 'hotel' && 'Stays'}
+                  {icon === 'plane' && 'Flights'}
+                  {icon === 'car' && 'Cars'}
+                  {icon === 'box' && 'Packages'}
+                  {icon === 'suitcase' && 'Activities'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
 
-        {/* Main Navigation */}
-        <View style={[styles.navContainer, { backgroundColor: surfaceColor }]}>
-          {['hotel', 'plane', 'car', 'box', 'suitcase'].map((icon) => (
-            <Pressable 
-              key={icon} 
-              onPress={() => handleIconPress(icon)}
-              style={styles.navButton}
+          {/* Show sign-in section only if user is not logged in */}
+          {!user && (
+            <LinearGradient
+              colors={theme === 'light' ? ['#261FB3', '#161179'] : ['#7f5af0', '#5e3fdc']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.membershipBanner}
             >
-              <Animated.View style={[styles.navIconContainer, { 
-                backgroundColor: selectedIcon === icon ? `${highlightColor}20` : 'transparent',
-                transform: [{ scale: selectedIcon === icon ? scaleValue : 1 }],
-              }]}>
-                <FontAwesome5 
-                  name={icon} 
-                  size={22} 
-                  color={selectedIcon === icon ? highlightColor : tabIconDefaultColor} 
-                />
-              </Animated.View>
-              <Text style={[styles.navLabel, { 
-                color: selectedIcon === icon ? highlightColor : tabIconDefaultColor,
-              }]}>
-                {icon === 'hotel' && 'Stays'}
-                {icon === 'plane' && 'Flights'}
-                {icon === 'car' && 'Cars'}
-                {icon === 'box' && 'Packages'}
-                {icon === 'suitcase' && 'Activities'}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+              <View style={styles.bannerContent}>
+                <View style={styles.crownIcon}>
+                  <FontAwesome5 name="crown" size={20} color="white" />
+                </View>
+                <View style={styles.bannerTextContainer}>
+                  <Text style={styles.bannerTitle}>Unlock Member Benefits</Text>
+                  <Text style={styles.bannerSubtitle}>Sign in for exclusive prices and rewards</Text>
+                </View>
+              </View>
+              <Button
+                title="Sign In / Join"
+                onPress={() => router.push('/modal')}
+                style={styles.bannerButton}
+                textStyle={{ color: highlightColor }}
+              />
+            </LinearGradient>
+          )}
 
-        {/* Show sign-in section only if user is not logged in */}
-        {!user && (
-          <LinearGradient
-            colors={theme === 'light' ? ['#261FB3', '#161179'] : ['#7f5af0', '#5e3fdc']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.membershipBanner}
-          >
-            <View style={styles.bannerContent}>
-              <View style={styles.crownIcon}>
-                <FontAwesome5 name="crown" size={20} color="white" />
-              </View>
-              <View style={styles.bannerTextContainer}>
-                <Text style={styles.bannerTitle}>Unlock Member Benefits</Text>
-                <Text style={styles.bannerSubtitle}>Sign in for exclusive prices and rewards</Text>
-              </View>
+          {/* Featured Deals */}
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: headlineColor }]}>
+                Featured Vacation Deals
+              </Text>
+              <Pressable>
+                <Text style={[styles.seeAllText, { color: highlightColor }]}>
+                  See all
+                </Text>
+              </Pressable>
             </View>
-            <Button
-              title="Sign In / Join"
-              onPress={() => setAuthModalVisible(true)}
-              style={styles.bannerButton}
-              textStyle={{ color: highlightColor }}
-            />
-          </LinearGradient>
-        )}
-
-        {/* Featured Deals */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: headlineColor }]}>
-              Featured Vacation Deals
-            </Text>
-            <Pressable>
-              <Text style={[styles.seeAllText, { color: highlightColor }]}>
-                See all
-              </Text>
-            </Pressable>
-          </View>
-          
-          <FlatList
-            horizontal
-            data={vacationDeals}
-            keyExtractor={(item) => item.id}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.dealsContainer}
-            renderItem={renderDealCard}
-            snapToInterval={CARD_WIDTH + 16}
-            decelerationRate="fast"
-          />
-        </View>
-
-        {/* Travel Features */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: headlineColor }]}>
-              Travel Perks
-            </Text>
-            <Pressable>
-              <Text style={[styles.seeAllText, { color: highlightColor }]}>
-                See all
-              </Text>
-            </Pressable>
-          </View>
-          
-          <FlatList
-            horizontal
-            data={travelFeatures}
-            keyExtractor={(item) => item.id}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.featuresContainer}
-            renderItem={renderFeatureCard}
-          />
-        </View>
-
-        {/* Promotion Banner */}
-        <View style={[styles.promoBanner, { borderColor: borderColor }]}>
-          <Image
-            source={{ uri: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1470&q=80' }}
-            style={styles.promoImage}
-            resizeMode="cover"
-          />
-          <LinearGradient
-            colors={['rgba(0,0,0,0.7)', 'transparent']}
-            style={styles.promoGradientTop}
-          />
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.7)']}
-            style={styles.promoGradientBottom}
-          />
-          <View style={styles.promoContent}>
-            <Text style={styles.promoTitle}>
-              Summer Vacation Sale
-            </Text>
-            <Text style={styles.promoSubtitle}>
-              Book by June 30 for travel through September
-            </Text>
-            <Button
-              title="Explore Deals"
-              onPress={() => console.log('Learn More pressed')}
-              style={styles.promoButton}
-              textStyle={{ color: 'white' }}
+            
+            <FlatList
+              horizontal
+              data={vacationDeals}
+              keyExtractor={(item) => item.id}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.dealsContainer}
+              renderItem={renderDealCard}
+              snapToInterval={CARD_WIDTH + 16}
+              decelerationRate="fast"
             />
           </View>
-        </View>
-      </ScrollView>
 
-      {/* Auth Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={authModalVisible}
-        onRequestClose={() => setAuthModalVisible(false)}
-      >
-        <AuthModal onClose={() => setAuthModalVisible(false)} />
-      </Modal>
-    </View>
+          {/* Travel Features */}
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: headlineColor }]}>
+                Travel Perks
+              </Text>
+              <Pressable>
+                <Text style={[styles.seeAllText, { color: highlightColor }]}>
+                  See all
+                </Text>
+              </Pressable>
+            </View>
+            
+            <FlatList
+              horizontal
+              data={travelFeatures}
+              keyExtractor={(item) => item.id}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.featuresContainer}
+              renderItem={renderFeatureCard}
+            />
+          </View>
+
+          {/* Promotion Banner */}
+          <View style={[styles.promoBanner, { borderColor: borderColor }]}>
+            <Image
+              source={{ uri: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1470&q=80' }}
+              style={styles.promoImage}
+              resizeMode="cover"
+            />
+            <LinearGradient
+              colors={['rgba(0,0,0,0.7)', 'transparent']}
+              style={styles.promoGradientTop}
+            />
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.7)']}
+              style={styles.promoGradientBottom}
+            />
+            <View style={styles.promoContent}>
+              <Text style={styles.promoTitle}>
+                Summer Vacation Sale
+              </Text>
+              <Text style={styles.promoSubtitle}>
+                Book by June 30 for travel through September
+              </Text>
+              <Button
+                title="Explore Deals"
+                onPress={() => console.log('Learn More pressed')}
+                style={styles.promoButton}
+                style={{ borderWidth: 1, borderColor: 'white', borderRadius: 12, height: 48, justifyContent: 'center', alignItems: 'center' }}
+              />
+            </View>
+          </View>
+        </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -380,25 +362,11 @@ const styles = StyleSheet.create({
   container: {
     marginTop: 35,
     flex: 1
-    },
+  },
   scrollContainer: {
     paddingBottom: 24,
   },
-  headerContainer: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 16,
-  },
-  welcomeText: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
   navContainer: {
-    
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: 16,
@@ -435,11 +403,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 6,
-    
   },
   bannerContent: {
-
-    backgroundColor: 'transparent', 
+    backgroundColor: 'transparent',
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -453,7 +419,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   bannerTextContainer: {
-    backgroundColor: 'transparent', 
+    backgroundColor: 'transparent',
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'flex-start',

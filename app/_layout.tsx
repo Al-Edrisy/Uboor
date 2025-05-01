@@ -1,19 +1,14 @@
-// app/_layout.tsx
+import React, { useEffect, useCallback } from 'react';
+import { View, StyleSheet } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { SplashScreen, Stack, useRouter } from 'expo-router';
-import { View } from 'react-native';
-import React, { useEffect } from 'react';
-import 'react-native-reanimated';
-import { useColorScheme } from '@/components/useColorScheme';
-import AnimatedSplashScreen from './AnimatedSplashScreen';
+import { SplashScreen as ExpoSplash, Stack, useRouter } from 'expo-router';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
+import AnimatedSplashScreen from '../components/AnimatedSplashScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { FlightBookingProvider } from './context/FlightBookingContext';
 import { ThemeProvider } from './context/ThemeContext';
-
-// Keep the splash screen visible until we're ready to render
-SplashScreen.preventAutoHideAsync();
+import 'react-native-reanimated';
+import { useColorScheme } from './../components/useColorScheme';
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -21,24 +16,22 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
-  // Handle errors during initialization
   useEffect(() => {
-    if (fontError) {
-      console.error('Error loading fonts:', fontError);
-    }
+    if (fontError) throw fontError;
   }, [fontError]);
 
-  // If resources aren't loaded yet, render nothing and keep splash screen
+  useEffect(() => {
+    ExpoSplash.preventAutoHideAsync();
+  }, []);
+
   if (!fontsLoaded) {
     return null;
   }
 
   return (
-    <ThemeProvider> {/* Wrap everything with our custom ThemeProvider */}
+    <ThemeProvider>
       <AuthProvider>
-        <FlightBookingProvider>
           <AppInitializer />
-        </FlightBookingProvider>
       </AuthProvider>
     </ThemeProvider>
   );
@@ -47,86 +40,108 @@ export default function RootLayout() {
 function AppInitializer() {
   const [showSplash, setShowSplash] = React.useState(true);
 
-  if (showSplash) {
-    return (
-      <AnimatedSplashScreen
-        onAnimationFinish={() => {
-          setShowSplash(false);
-          SplashScreen.hideAsync();
-        }}
-        duration={2500}
-      />
-    );
-  }
+  const onSplashReady = useCallback(async () => {
+    setShowSplash(false);
+    await ExpoSplash.hideAsync();
+  }, []);
 
-  return <RootLayoutNav />;
+  return showSplash ? (
+    <AnimatedSplashScreen onAnimationFinish={onSplashReady} />
+  ) : (
+    <RootNavigator />
+  );
 }
 
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+function RootNavigator() {
+  const colorScheme = useAuthScheme();
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  // Handle authentication state changes
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/modal');
+    if (!loading) {
+      if (user) {
+        // Close all auth modals if logged in
+        if (router.canGoBack()) {
+          router.back();
+        }
+        router.replace('/');
+      } else if (!router.asPath?.startsWith('/modals/auth/AuthModal')) {
+        // Show auth modal if not logged in
+        router.push('./modal');
+      }
     }
   }, [user, loading, router]);
 
-  // Show loading state while auth state is being determined
   if (loading) {
-    return (
-      <View style={{
-        flex: 1,
-        backgroundColor: colorScheme === 'dark' ? '#16161a' : '#fffffe', // Updated to use our theme colors
-        justifyContent: 'center',
-        alignItems: 'center'
-      }} />
-    );
+    return <LoadingScreen theme={colorScheme} />;
   }
 
-  // Create custom navigation themes based on our color scheme
-  const CustomDarkTheme = {
-    ...DarkTheme,
-    colors: {
-      ...DarkTheme.colors,
-      background: '#16161a', // Our dark background
-      card: '#242629', // Our dark surface
-      text: '#fffffe', // Our dark text
-      border: '#010101', // Our dark border
-      primary: '#7f5af0', // Our dark highlight/button color
-    },
-  };
-
-  const CustomLightTheme = {
-    ...DefaultTheme,
-    colors: {
-      ...DefaultTheme.colors,
-      background: '#fffffe', // Our light background
-      card: '#f0f0f0', // Our light surface
-      text: '#2b2c34', // Our light text
-      border: '#d1d1e9', // Our light border
-      primary: '#6246ea', // Our light highlight/button color
-    },
-  };
+  const navTheme = colorScheme === 'dark' ? customDark : customLight;
 
   return (
-    <NavigationThemeProvider value={colorScheme === 'dark' ? CustomDarkTheme : CustomLightTheme}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
+    <NavigationThemeProvider value={navTheme}>
+      <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
-          name="modal"
-          options={{
-            presentation: 'modal',
-            animation: 'slide_from_bottom',
-          }}
+          name="modals/auth/auth-modal"
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="modals/auth/sign-in"
+          options={{ presentation: 'modal', animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="modals/auth/sign-up"
+          options={{ presentation: 'modal', animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="modals/auth/forgot-password"
+          options={{ presentation: 'modal', animation: 'slide_from_right' }}
         />
       </Stack>
     </NavigationThemeProvider>
   );
 }
+
+function LoadingScreen({ theme }: { theme: 'light' | 'dark' }) {
+  return (
+    <View style={[styles.loading, { backgroundColor: theme === 'dark' ? '#16161a' : '#fffffe' }]} />
+  );
+}
+
+function useAuthScheme(): 'light' | 'dark' {
+  const scheme = useColorScheme();
+  return scheme === 'dark' ? 'dark' : 'light';
+}
+
+const customDark = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: '#16161a',
+    card: '#242629',
+    text: '#fffffe',
+    border: '#010101',
+    primary: '#7f5af0',
+  },
+};
+
+const customLight = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: '#fffffe',
+    card: '#f0f0f0',
+    text: '#2b2c34',
+    border: '#d1d1e9',
+    primary: '#6246ea',
+  },
+};
+
+const styles = StyleSheet.create({
+  loading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

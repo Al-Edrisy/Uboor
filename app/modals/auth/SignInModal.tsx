@@ -1,11 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Platform, StyleSheet, Alert, KeyboardAvoidingView, ActivityIndicator, Animated } from 'react-native';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import auth from '../../lib/firebase';
+import { signInWithEmailAndPassword, signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
+import {auth} from '../../lib/firebase';
 import { Text, View, TextInput, Button } from '@/components/Themed';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from './../../context/ThemeContext';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+
+// Let Expo handle the redirect
+WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInModal() {
   const [email, setEmail] = useState('');
@@ -14,6 +19,14 @@ export default function SignInModal() {
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const { theme } = useTheme();
+
+  const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
+    expoClientId: '640873751207-uch8u1cvtpn21r9dmp0b0mspkd64da60.apps.googleusercontent.com',
+    iosClientId: '640873751207-hm5k0ne86ned9i3ge56alsc8rn54jpgm.apps.googleusercontent.com',
+    androidClientId: 'YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com',
+    webClientId: '640873751207-7jofjtijr35tumu6sl8i1pjsa9ulh4ia.apps.googleusercontent.com',
+    scopes: ['profile', 'email'],
+  });
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -33,6 +46,22 @@ export default function SignInModal() {
     ]).start();
   }, []);
 
+  useEffect(() => {
+    if (googleResponse?.type === 'success') {
+      const { id_token } = googleResponse.authentication;
+      const credential = GoogleAuthProvider.credential(id_token);
+      signInWithCredential(auth, credential)
+        .then(userCred => {
+          const user = userCred.user;
+          Alert.alert('Welcome', `Signed in as ${user.email}`);
+          router.replace('/');
+        })
+        .catch(error => {
+          Alert.alert('Login Error', error.message);
+        });
+    }
+  }, [googleResponse]);
+
   const handleSignIn = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please enter both email and password');
@@ -42,7 +71,7 @@ export default function SignInModal() {
     try {
       setLoading(true);
       await signInWithEmailAndPassword(auth, email, password);
-      router.back();
+      router.replace('/');
     } catch (error) {
       Alert.alert('Error', error instanceof Error ? error.message : 'An unknown error occurred');
     } finally {
@@ -139,10 +168,20 @@ export default function SignInModal() {
         </View>
 
         <Button
+          title="Sign in with Google"
+          onPress={() => googlePromptAsync()}
+          disabled={!googleRequest}
+          variant="outline"
+          icon={<Ionicons name="logo-google" size={20} />}
+          style={styles.socialButton}
+        />
+
+        <Button
           title="Create Account"
           onPress={() => router.push('/modals/auth/SignUpModal')}
-          variant="outline"
+          variant="text"
           icon={<Ionicons name="person-add" size={20} />}
+          style={styles.createAccountButton}
         />
       </View>
     </KeyboardAvoidingView>
@@ -214,10 +253,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     fontSize: 12,
   },
-  icon: {
+  socialButton: {
     marginBottom: 16,
-    backgroundColor: 'transparent',
-    borderRadius: 24,
-    padding: 16,
+  },
+  createAccountButton: {
+    marginTop: 8,
   },
 });

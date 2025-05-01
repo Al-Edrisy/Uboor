@@ -38,7 +38,6 @@ export class StripeService {
           confirm: true,
           metadata: {
             userId: paymentData.userId,
-            bookingId: paymentData.bookingId,
           },
           return_url: 'http://localhost:2000/payment-success',
         });
@@ -61,9 +60,7 @@ export class StripeService {
           payment_method: 'pm_card_visa',
           confirm: true,
           metadata: {
-            userId: paymentData.userId,
-            bookingId: paymentData.bookingId,
-          },
+            userId: paymentData.userId,          },
         });
 
         logger.info(`Payment processed with default test card: ${intent.id}`);

@@ -15,15 +15,16 @@ import {
   Pressable,
   ScrollView
 } from 'react-native';
+import { BASE_URL} from '@env';
 import { FontAwesome5, MaterialIcons, Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import airportData from './../../python/airports.json';
 import { useTheme } from './../context/ThemeContext';
 import { useThemeColor } from '@/components/Themed';
 import { useNavigation } from '@react-navigation/native';
-import { useFlightBooking } from '../context/FlightBookingContext';
 import currencyData from './../../python/currencies.json';
 import FlightResultsModal from './../modals/FlightBooking/FlightResultsModal';
+import FlightBookingModal from './../modals/FlightBooking/FlightBookingModal';
 
 type Airport = {
   iata: string;
@@ -53,13 +54,78 @@ type ModalState = {
   flightIndex?: number;
 };
 
+type FlightOffer = {
+  id: string;
+  price: {
+    total: string;
+    currency: string;
+    base: string;
+  };
+  travelerPricings: {
+    travelerId: string;
+    travelerType: string;
+    price: {
+      total: string;
+      base: string;
+      taxes?: {
+        amount: string;
+        code: string;
+      }[];
+    };
+    fareDetailsBySegment: {
+      segmentId: string;
+      cabin: string;
+      fareBasis: string;
+      brandedFare?: string;
+      class: string;
+      includedCheckedBags?: {
+        quantity: number;
+      };
+      amenities?: {
+        description: string;
+        isChargeable: boolean;
+        amenityType: string;
+      }[];
+    }[];
+  }[];
+  itineraries: {
+    duration: string;
+    segments: {
+      departure: {
+        iataCode: string;
+        at: string;
+        terminal?: string;
+      };
+      arrival: {
+        iataCode: string;
+        at: string;
+        terminal?: string;
+      };
+      carrierCode: string;
+      number: string;
+      aircraft: {
+        code: string;
+      };
+      duration: string;
+      id: string;
+      co2Emissions?: {
+        weight: number;
+        weightUnit: string;
+        cabin: string;
+      }[];
+    }[];
+  }[];
+  dictionaries?: any;
+  pricingData?: any;
+};
+
 const TRIP_TYPES = ['roundtrip', 'oneway', 'multicity'] as const;
 const CLASS_TYPES = ['Economy', 'Business', 'First Class'] as const;
-const MAX_FLIGHTS = 5;
+const MAX_FLIGHTS = 100;
 const MAX_TRAVELERS = 10;
 const MIN_TRAVELERS = 1;
-const API_BASE_URL = 'http://localhost:2000';
-
+const API_BASE_URL = "http://192.168.0.105:2000";
+console.log('API_BASE_URL:', API_BASE_URL);
 const FlightSearch: React.FC = () => {
   const navigation = useNavigation();
   const { theme } = useTheme();
@@ -71,9 +137,12 @@ const FlightSearch: React.FC = () => {
   const secondaryColor = useThemeColor({}, 'secondary');
   const dangerColor = useThemeColor({}, 'warning');
   const placeholderColor = useThemeColor({}, 'secondary');
+  const buttonColor = useThemeColor({}, 'button');
+  const buttonTextColor = useThemeColor({}, 'buttonText');
+
 
   const [searchParams, setSearchParams] = useState<SearchParams>({
-    tripType: 'roundtrip',
+    tripType: 'oneway',
     flights: [{ id: Date.now(), flyingFrom: '', flyingTo: '', departureDate: '' }],
     travelers: 1,
     classType: 'Economy',
@@ -85,25 +154,17 @@ const FlightSearch: React.FC = () => {
     visible: false
   });
   const [loading, setLoading] = useState(false);
-  const [resultsVisible, setResultsVisible] = useState(false);
-  const [flightResults, setFlightResults] = useState<any[]>([]);
+  const [flightResults, setFlightResults] = useState<FlightOffer[]>([]);
   const [airportSearchQuery, setAirportSearchQuery] = useState('');
   const [filteredAirports, setFilteredAirports] = useState<Airport[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [availableCurrencies, setAvailableCurrencies] = useState<string[]>(['USD']);
 
-
+  // Modal states
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedFlight, setSelectedFlight] = useState<FlightOffer | null>(null);
 
-
-  // Add this handler function
-const handleBookFlight = (offer: FlightOffer) => {
-  setSelectedFlight(offer);
-  setShowResultsModal(false);
-  setShowBookingModal(true);
-};
   // Load currencies from JSON file
   useEffect(() => {
     try {
@@ -252,7 +313,7 @@ const handleBookFlight = (offer: FlightOffer) => {
       };
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
 
       const response = await fetch(`${API_BASE_URL}/api/flights/search`, {
         method: 'POST',
@@ -273,7 +334,7 @@ const handleBookFlight = (offer: FlightOffer) => {
 
       const data = await response.json();
       setFlightResults(data.data || []);
-      setResultsVisible(true);
+      setShowResultsModal(true);
     } catch (error) {
       console.error('Search error:', error);
       let errorMessage = 'Failed to search flights. Please try again later.';
@@ -291,6 +352,21 @@ const handleBookFlight = (offer: FlightOffer) => {
       setLoading(false);
     }
   }, [searchParams, validateInputs]);
+
+  const handleBookFlight = useCallback((offer: FlightOffer) => {
+    setSelectedFlight(offer);
+    setShowResultsModal(false);
+    setShowBookingModal(true);
+  }, []);
+
+  const handleBookingComplete = useCallback((order: any) => {
+    setShowBookingModal(false);
+    Alert.alert(
+      'Booking Confirmed',
+      `Your booking reference is: ${order.associatedRecords?.[0]?.reference || order.id}`,
+      [{ text: 'OK', onPress: () => navigation.goBack() }]
+    );
+  }, [navigation]);
 
   const addFlight = useCallback(() => {
     if (!canAddFlight) {
@@ -523,7 +599,7 @@ const handleBookFlight = (offer: FlightOffer) => {
                       pressed && styles.pressedItem
                     ]}
                     onPress={() => handleInputChange(
-                      modalState.type,
+                      modalState.type === 'flyingFrom' ? 'flyingFrom' : 'flyingTo',
                       item.iata,
                       modalState.flightIndex
                     )}
@@ -736,10 +812,11 @@ const handleBookFlight = (offer: FlightOffer) => {
     buttonText: {
       fontSize: 14,
       fontWeight: '500',
-      color: textColor,
+    
     },
     activeButtonText: {
-      color: 'white',
+      color: buttonTextColor, 
+
     },
     detailsContainer: {
       marginBottom: 24,
@@ -756,6 +833,7 @@ const handleBookFlight = (offer: FlightOffer) => {
       borderColor: borderColor,
       borderRadius: 8,
       backgroundColor: surfaceColor,
+
     },
     optionContent: {
       flexDirection: 'row',
@@ -845,7 +923,7 @@ const handleBookFlight = (offer: FlightOffer) => {
       elevation: 3,
     },
     searchButtonText: {
-      color: 'white',
+      color: buttonTextColor, 
       fontSize: 16,
       fontWeight: 'bold',
       marginLeft: 8,
@@ -1158,17 +1236,6 @@ const handleBookFlight = (offer: FlightOffer) => {
                 </>
               )}
             </Pressable>
-
-            {/* Ensure FlightResultsModal is defined or imported */}
-            {/* Example: Uncomment and replace with the correct import or definition */}
-            <FlightResultsModal
-              visible={resultsVisible}
-              onClose={() => setResultsVisible(false)}
-              results={flightResults}
-              searchParams={searchParams}
-              onSelectFlight={(flight) => console.log('Selected flight:', flight)}
-              navigation={navigation}
-            />
           </View>
         </ScrollView>
 
@@ -1193,6 +1260,28 @@ const handleBookFlight = (offer: FlightOffer) => {
             </View>
           </View>
         </Modal>
+
+        {/* Flight Results Modal */}
+        <FlightResultsModal
+          visible={showResultsModal}
+          onClose={() => setShowResultsModal(false)}
+          results={flightResults}
+          searchParams={searchParams}
+          onSelectFlight={(flight) => {
+            setSelectedFlight(flight);
+            setShowResultsModal(false);
+            setShowBookingModal(true);
+          }}
+          onBookFlight={handleBookFlight}
+        />
+
+        {/* Flight Booking Modal */}
+        <FlightBookingModal
+          visible={showBookingModal}
+          onClose={() => setShowBookingModal(false)}
+          flightOffer={selectedFlight}
+          onBookingComplete={handleBookingComplete}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

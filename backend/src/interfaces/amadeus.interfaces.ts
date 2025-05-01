@@ -1,5 +1,11 @@
 // src/interfaces/amadeus.interfaces.ts
 
+
+export type CabinType = 'FIRST' | 'BUSINESS' | 'PREMIUM_ECONOMY' | 'ECONOMY';
+export type TravelerType = 'ADULT' | 'CHILD' | 'INFANT' | 'SENIOR' | 'YOUTH';
+export type FareType = 'PUBLISHED' | 'NEGOTIATED' | 'CORPORATE' | 'PRIVATE';
+
+
 // ---------------------------
 // Authentication Interfaces
 // ---------------------------
@@ -413,3 +419,7 @@ export interface BookingResponse {
       };
   };
 }
+
+
+
+

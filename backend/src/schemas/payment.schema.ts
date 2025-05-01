@@ -20,8 +20,8 @@ export const CardDetailsSchema = z.object({
 export const PaymentIntentRequestSchema = z.object({
   amount: z.number().min(1, 'Amount must be greater than 0'),
   currency: z.string().length(3, 'Currency must be a 3-letter ISO code'),
-  userId: z.string().uuid('Invalid user ID format'),
-  bookingId: z.string().uuid('Invalid booking ID format'),
+  userId: z.string(),
+  bookingId: z.string().optional(),
   card: CardDetailsSchema.optional() // Still optional but with validation when present
 });
 

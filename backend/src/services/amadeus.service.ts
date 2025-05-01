@@ -38,6 +38,8 @@ export class AmadeusService {
       );
       this.accessToken = response.data.access_token;
       this.tokenExpiry = Date.now() + (response.data.expires_in - 60) * 1000; // Set expiry time
+      console.log("Access token", this.accessToken);
+      logger.info('Amadeus authentication successful');
     } catch (error: any) { // Explicitly typing error as any
       logger.error(`Amadeus authentication failed: ${error.response?.data || error.message}`); // Log full error response
       throw new Error('Failed to authenticate with Amadeus');
@@ -63,7 +65,6 @@ export class AmadeusService {
 
   async priceFlightOffers(flightOffers: any[]): Promise<PricingResponse> {
     await this.authenticate();
-    console.log(this.accessToken)
 
     try {
       const response = await this.client.post<PricingResponse>('/v1/shopping/flight-offers/pricing', {

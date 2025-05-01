@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Platform, StyleSheet, Alert, KeyboardAvoidingView, ActivityIndicator, Animated } from 'react-native';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import auth from '../../lib/firebase';
+import {auth} from '../../lib/firebase';
 import { Text, View, TextInput, Button } from '@/components/Themed';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,6 +52,7 @@ export default function SignUpModal() {
       setLoading(true);
       await createUserWithEmailAndPassword(auth, email, password);
       router.back();
+      router.replace('/'); 
     } catch (error) {
       Alert.alert('Error', error instanceof Error ? error.message : 'An unknown error occurred');
     } finally {

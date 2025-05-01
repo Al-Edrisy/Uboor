@@ -1,4 +1,5 @@
 // backend/src/templates/emails/bookingConfirmation.ts
+
 interface BookingConfirmationParams {
   passengerName: string;
   bookingReference: string;
@@ -10,108 +11,132 @@ interface BookingConfirmationParams {
 export const bookingConfirmationTemplate = ({
   passengerName,
   bookingReference,
-  companyName = 'Safe Travels Airlines',
-  supportEmail = 'support@safetravels.com',
-  supportPhone = '+1 (800) 123-4567',
+  companyName = 'Uboor',
+  supportEmail = 'support@uboor.com',
+  supportPhone = '+1 (800) 555-UBOOR',
 }: BookingConfirmationParams): string => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Booking Confirmation - ${bookingReference}</title>
-    <style>
-        * {
-            font-family: 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.6;
-            color: #333333;
-            box-sizing: border-box;
-        }
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #ffffff;
-        }
-        .header {
-            background-color: #0066cc;
-            padding: 30px 20px;
-            text-align: center;
-            color: white;
-        }
-        .logo {
-            font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        .content {
-            padding: 30px 20px;
-        }
-        .footer {
-            margin-top: 20px;
-            padding: 20px;
-            text-align: center;
-            font-size: 12px;
-            color: #777777;
-            border-top: 1px solid #eeeeee;
-        }
-        .button {
-            display: inline-block;
-            padding: 10px 20px;
-            background-color: #0066cc;
-            color: white;
-            text-decoration: none;
-            border-radius: 4px;
-            margin: 15px 0;
-        }
-        .details {
-            background-color: #f9f9f9;
-            padding: 15px;
-            border-radius: 4px;
-            margin: 20px 0;
-        }
-        .reference {
-            font-size: 18px;
-            font-weight: bold;
-            color: #0066cc;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Booking Confirmation - ${bookingReference}</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      color: #333;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f2f2f2;
+    }
+    .container {
+      max-width: 600px;
+      margin: 30px auto;
+      background: #ffffff;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    .header {
+      background-color: #000000;
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .logo {
+      font-size: 40px;
+      font-weight: 800;
+      color: white;
+      margin: 0;
+    }
+    .brand-name {
+      color: white;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      margin-top: 8px;
+    }
+    .content {
+      padding: 30px 20px;
+    }
+    h1 {
+      font-size: 24px;
+      color: #000;
+      margin-top: 0;
+      margin-bottom: 20px;
+    }
+    .ticket-info {
+      background-color: #f7f9fc;
+      border: 1px solid #e1e5eb;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    .ticket-info p {
+      margin: 8px 0;
+      font-size: 16px;
+    }
+    .booking-ref {
+      font-size: 20px;
+      font-weight: bold;
+      color: #000;
+    }
+    .button {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 12px 24px;
+      background-color: #000000;
+      color: #ffffff;
+      text-decoration: none;
+      border-radius: 5px;
+      font-weight: 600;
+      font-size: 16px;
+    }
+    .footer {
+      background: #fafafa;
+      text-align: center;
+      padding: 20px;
+      font-size: 12px;
+      color: #777;
+      border-top: 1px solid #eee;
+    }
+    .footer p {
+      margin: 5px 0;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="logo">${companyName}</div>
-            <h1>Your Booking Confirmation</h1>
-        </div>
-        
-        <div class="content">
-            <p>Dear ${passengerName},</p>
-            <p>Thank you for choosing ${companyName}. Your booking has been confirmed and we're preparing everything for your trip.</p>
-            
-            <div class="details">
-                <p><strong>Booking Reference:</strong> <span class="reference">${bookingReference}</span></p>
-                <p>Please keep this reference number for all communications regarding your booking.</p>
-            </div>
-            
-            <p>We've attached your booking confirmation and receipt to this email for your records.</p>
-            
-            <p>If you need to make any changes to your booking or have any questions, please don't hesitate to contact our customer support team.</p>
-            
-            <p>Wishing you pleasant travels,</p>
-            <p><strong>The ${companyName} Team</strong></p>
-        </div>
-        
-        <div class="footer">
-            <p>${companyName}</p>
-            <p>Customer Support: ${supportPhone} | ${supportEmail}</p>
-            <p>© ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
-        </div>
+  <div class="container">
+    <div class="header">
+      <div class="logo">U</div>
+      <div class="brand-name">UBOOR</div>
     </div>
+    <div class="content">
+      <h1>Booking Confirmation</h1>
+      <p>Hello ${passengerName},</p>
+      <p>Thank you for booking with <strong>${companyName}</strong>! Your trip is confirmed. Below are your ticket details:</p>
+
+      <div class="ticket-info">
+        <p><strong>Booking Reference:</strong></p>
+        <p class="booking-ref">${bookingReference}</p>
+      </div>
+
+      <p>A detailed itinerary and payment receipt have been attached to this email for your records.</p>
+
+      <a href="#" class="button">View My Booking</a>
+
+      <p style="margin-top: 30px;">If you have any questions or need assistance, feel free to contact our support team.</p>
+
+      <p>Safe travels,</p>
+      <p><strong>The ${companyName} Team</strong></p>
+    </div>
+    <div class="footer">
+      <p>Customer Support: ${supportPhone} | ${supportEmail}</p>
+      <p>© ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+    </div>
+  </div>
 </body>
 </html>
 `;
